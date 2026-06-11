@@ -56,14 +56,16 @@ export async function POST(req: NextRequest) {
     const endMins = endMinutes % 60
     const end_time = `${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}:00`
 
-    // Calculate deposit amount (round to integer, MP requires it)
+    // Calculate deposit amount — MP requires a positive float
     const depositAmount = Math.round(
-      (service.price * barbershop.deposit_percentage) / 100
+      (Number(service.price) * barbershop.deposit_percentage) / 100
     )
+    const depositAmountFloat = parseFloat(depositAmount.toFixed(2))
 
     if (depositAmount <= 0) {
       return NextResponse.json({ error: 'Monto de seña inválido' }, { status: 400 })
     }
+
 
     // Create appointment in pending_payment status
     const { data: appointment, error: aptError } = await supabase
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
           : start_time,
         end_time,
         status: 'pending_payment',
-        deposit_amount: depositAmount,
+        deposit_amount: depositAmountFloat,
         deposit_status: 'pending',
         client_name: client_name.trim(),
         client_phone: client_phone?.trim() || null,
@@ -99,7 +101,7 @@ export async function POST(req: NextRequest) {
           title: `Seña - ${service.name} en ${barbershop.name}`,
           quantity: 1,
           currency_id: 'ARS',
-          unit_price: depositAmount,
+          unit_price: depositAmountFloat,
         },
       ],
       payer: {
