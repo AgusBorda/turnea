@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+function getAppUrl(req: NextRequest): string {
+  // Prefer explicit env var
+  if (process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost')) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')
+  }
+  // Fall back to request origin (works automatically on Vercel)
+  const origin = req.headers.get('origin') || req.headers.get('x-forwarded-host')
+  if (origin) {
+    const proto = req.headers.get('x-forwarded-proto') || 'https'
+    return origin.startsWith('http') ? origin.replace(/\/$/, '') : `${proto}://${origin}`.replace(/\/$/, '')
+  }
+  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+}
 
 export async function POST(req: NextRequest) {
   try {
+    const APP_URL = getAppUrl(req)
+    const isLocalhost = APP_URL.includes('localhost') || APP_URL.includes('127.0.0.1')
+
     const body = await req.json()
     const {
       barbershop_id,
@@ -93,8 +108,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Create Mercado Pago preference
-    const isLocalhost = APP_URL.includes('localhost') || APP_URL.includes('127.0.0.1')
-
     const preferenceBody: Record<string, unknown> = {
       items: [
         {
