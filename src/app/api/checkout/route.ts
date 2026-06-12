@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Error al crear turno' }, { status: 500 })
     }
 
-    // Create Mercado Pago preference
+    // Create Mercado Pago preference — minimal body to avoid validation errors
     const preferenceBody: Record<string, unknown> = {
       items: [
         {
@@ -117,22 +117,17 @@ export async function POST(req: NextRequest) {
           unit_price: depositAmountFloat,
         },
       ],
-      payer: {
-        name: client_name.trim(),
-        ...(client_phone ? { phone: { number: client_phone.trim() } } : {}),
-      },
       back_urls: {
         success: `${APP_URL}/${barbershop.slug}/success`,
         failure: `${APP_URL}/${barbershop.slug}/cancel`,
         pending: `${APP_URL}/${barbershop.slug}/success`,
       },
-      // auto_return requires HTTPS back_urls — only set in production
       ...(!isLocalhost && { auto_return: 'approved' }),
-      // notification_url also requires HTTPS
-      ...(!isLocalhost && { notification_url: `${APP_URL}/api/webhooks/mp` }),
       external_reference: appointment.id,
-      statement_descriptor: 'TURNEA',
     }
+
+    console.log('[checkout] preference body:', JSON.stringify(preferenceBody))
+    console.log('[checkout] APP_URL:', APP_URL)
 
     const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
@@ -145,6 +140,7 @@ export async function POST(req: NextRequest) {
 
     if (!mpRes.ok) {
       const mpErr = await mpRes.json().catch(() => ({}))
+      console.log('[checkout] MP error:', JSON.stringify(mpErr))
       // Clean up appointment if MP failed
       await supabase.from('appointments').delete().eq('id', appointment.id)
       return NextResponse.json(
@@ -154,6 +150,7 @@ export async function POST(req: NextRequest) {
     }
 
     const preference = await mpRes.json()
+    console.log('[checkout] preference created:', preference.id, '| init_point:', preference.init_point)
 
     // Store preference_id in appointment
     await supabase
