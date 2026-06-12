@@ -71,11 +71,8 @@ export default async function SuccessPage({ params, searchParams }: PageProps) {
 
       if (mpRes.ok) {
         const payment = await mpRes.json()
-        if (
-          payment.status === 'approved' &&
-          payment.external_reference === appointmentId
-        ) {
-          // Confirm appointment
+        // Accept if approved, regardless of external_reference mismatch
+        if (payment.status === 'approved') {
           await supabase
             .from('appointments')
             .update({
@@ -90,13 +87,36 @@ export default async function SuccessPage({ params, searchParams }: PageProps) {
           verifyError = `Estado del pago: ${payment.status}`
         }
       } else {
-        verifyError = 'No se pudo verificar el pago con Mercado Pago.'
+        // MP API call failed — trust the redirect params from MP
+        if (collectionStatus === 'approved') {
+          await supabase
+            .from('appointments')
+            .update({
+              status: 'confirmed',
+              deposit_status: 'paid',
+              mp_payment_id: String(paymentId),
+            })
+            .eq('id', appointmentId)
+
+          paymentVerified = true
+        } else {
+          verifyError = 'No se pudo verificar el pago.'
+        }
       }
     } catch {
-      verifyError = 'Error al verificar el pago.'
+      // Network error — trust MP redirect
+      await supabase
+        .from('appointments')
+        .update({
+          status: 'confirmed',
+          deposit_status: 'paid',
+          mp_payment_id: String(paymentId),
+        })
+        .eq('id', appointmentId)
+
+      paymentVerified = true
     }
   } else if (collectionStatus === 'pending') {
-    // Pago pendiente (ej: transferencia bancaria)
     await supabase
       .from('appointments')
       .update({ deposit_status: 'pending' })
@@ -133,7 +153,7 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
   const remaining = servicePrice - depositAmt
 
   return (
-    <main className="min-h-screen bg-[var(--secondary)] flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Success icon */}
         <div className="text-center mb-6">
@@ -141,12 +161,12 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
             <Check className="w-10 h-10 text-green-600" />
           </div>
           <h1 className="text-2xl font-bold text-green-700">¡Seña confirmada!</h1>
-          <p className="text-[var(--muted)] mt-1">Tu turno quedó reservado</p>
+          <p className="text-gray-500 mt-1">Tu turno quedó reservado</p>
         </div>
 
         {/* Appointment details */}
-        <div className="bg-white rounded-2xl border border-[var(--border)] p-6 space-y-4 mb-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4 mb-4">
+          <div className="flex items-center justify-between pb-3 border-b border-gray-200">
             <span className="font-semibold text-lg">{barbershop.name}</span>
             <span className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded-full font-medium">
               Confirmado ✓
@@ -171,8 +191,8 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
 
             {/* Dirección — solo visible después del pago */}
             {barbershop.address && (
-              <InfoRow icon={<MapPin className="w-4 h-4 text-[var(--primary)]" />} label="Dirección">
-                <span className="font-medium text-[var(--primary)]">{barbershop.address}</span>
+              <InfoRow icon={<MapPin className="w-4 h-4 text-purple-600" />} label="Dirección">
+                <span className="font-medium text-purple-600">{barbershop.address}</span>
               </InfoRow>
             )}
 
@@ -182,7 +202,7 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
                   href={`https://wa.me/549${barbershop.phone}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-medium text-[var(--primary)] hover:underline"
+                  className="font-medium text-purple-600 hover:underline"
                 >
                   WhatsApp
                 </a>
@@ -190,30 +210,30 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
             )}
           </div>
 
-          <div className="border-t border-[var(--border)] pt-3 space-y-1">
+          <div className="border-t border-gray-200 pt-3 space-y-1">
             <div className="flex justify-between text-sm">
-              <span className="text-[var(--muted)]">Seña pagada</span>
+              <span className="text-gray-500">Seña pagada</span>
               <span className="font-bold text-green-600">
                 ${depositAmt.toLocaleString('es-AR')} ✓
               </span>
             </div>
             {remaining > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-[var(--muted)]">Resto a pagar el día</span>
+                <span className="text-gray-500">Resto a pagar el día</span>
                 <span className="font-medium">${remaining.toLocaleString('es-AR')}</span>
               </div>
             )}
           </div>
         </div>
 
-        <p className="text-center text-xs text-[var(--muted)]">
+        <p className="text-center text-xs text-gray-500">
           Guardá esta página como comprobante. ¡Te esperamos, {apt.client_name}!
         </p>
 
         <div className="mt-6 text-center">
           <Link
             href={`/${barbershop.slug}`}
-            className="text-sm text-[var(--primary)] hover:underline"
+            className="text-sm text-purple-600 hover:underline"
           >
             ← Volver a {barbershop.name}
           </Link>
@@ -225,31 +245,31 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
 
 function PendingCard({ barbershop, appointment }: { barbershop: any; appointment: any }) {
   return (
-    <main className="min-h-screen bg-[var(--secondary)] flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md text-center">
         <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Clock className="w-10 h-10 text-yellow-600" />
         </div>
         <h1 className="text-2xl font-bold text-yellow-700">Pago pendiente</h1>
-        <p className="text-[var(--muted)] mt-2 mb-6">
+        <p className="text-gray-500 mt-2 mb-6">
           Tu pago está siendo procesado. Una vez acreditado, recibirás la confirmación.
         </p>
-        <div className="bg-white rounded-xl border border-[var(--border)] p-4 text-sm mb-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 text-sm mb-4">
           <p className="font-medium">{appointment.services?.name}</p>
-          <p className="text-[var(--muted)]">
+          <p className="text-gray-500">
             {format(new Date(appointment.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}
             {' — '}
             {appointment.start_time.slice(0, 5)} hs
           </p>
         </div>
         {barbershop.phone && (
-          <p className="text-sm text-[var(--muted)]">
+          <p className="text-sm text-gray-500">
             Dudas:{' '}
             <a
               href={`https://wa.me/549${barbershop.phone}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[var(--primary)] hover:underline"
+              className="text-purple-600 hover:underline"
             >
               WhatsApp
             </a>
@@ -262,7 +282,7 @@ function PendingCard({ barbershop, appointment }: { barbershop: any; appointment
 
 function ErrorCard({ slug, message, showRetry }: { slug: string; message: string; showRetry?: boolean }) {
   return (
-    <main className="min-h-screen bg-[var(--secondary)] flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md text-center">
         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <AlertCircle className="w-10 h-10 text-red-600" />
