@@ -41,9 +41,9 @@ Objetivo: evitar que `mp_access_token` pueda quedar expuesto públicamente.
 * [x] Crear migration compatible
 * [x] Migrar credenciales existentes
 * [x] Adaptar Settings
-* [ ] Adaptar Checkout
+* [x] Adaptar Checkout
 * [x] Evitar enviar el token al navegador
-* [ ] Probar en Supabase DEV
+* [x] Probar en Supabase DEV
 * [x] Probar localhost
 * [x] Probar Vercel Preview
 * [ ] Eliminar columnas antiguas cuando la transición esté validada
