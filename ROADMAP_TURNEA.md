@@ -40,12 +40,12 @@ Objetivo: evitar que `mp_access_token` pueda quedar expuesto públicamente.
 * [x] Agregar `mp_configured` a `barbershops`
 * [x] Crear migration compatible
 * [x] Migrar credenciales existentes
-* [ ] Adaptar Settings
+* [x] Adaptar Settings
 * [ ] Adaptar Checkout
-* [ ] Evitar enviar el token al navegador
+* [x] Evitar enviar el token al navegador
 * [ ] Probar en Supabase DEV
-* [ ] Probar localhost
-* [ ] Probar Vercel Preview
+* [x] Probar localhost
+* [x] Probar Vercel Preview
 * [ ] Eliminar columnas antiguas cuando la transición esté validada
 
 **Estado:** ⏳ Pendiente
