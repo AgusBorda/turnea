@@ -290,3 +290,12 @@ Antes de darla por completada:
 - Lint/build revisados según impacto.
 - Explicar cómo probar manualmente.
 - No hacer push, merge ni deploy sin autorización.
+
+
+## Project roadmap
+
+El estado de tareas técnicas y de producto se mantiene en `ROADMAP_TURNEA.md`.
+
+- Revisarlo cuando una tarea esté relacionada con un ticket existente.
+- Al finalizar un ticket, proponer su actualización.
+- No marcar tareas como completadas si no fueron realmente implementadas y verificadas.
