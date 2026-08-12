@@ -8,8 +8,13 @@ import { format, addDays } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Check, ChevronLeft, Clock, User, Scissors, Calendar, CreditCard, Wallet } from 'lucide-react'
 
+type BookingBarbershop = Pick<
+  Barbershop,
+  'id' | 'slot_duration' | 'deposit_required' | 'deposit_percentage' | 'advance_booking_days'
+>
+
 interface Props {
-  barbershop: Barbershop
+  barbershop: BookingBarbershop
   barbers: Barber[]
   services: Service[]
   mpConfigured: boolean
@@ -178,9 +183,9 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
       if (aptError) throw aptError
 
       setSuccess(true)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Booking error:', err)
-      setError(err.message || 'Error al reservar. Intentá de nuevo.')
+      setError(err instanceof Error ? err.message : 'Error al reservar. Intentá de nuevo.')
     } finally {
       setLoading(false)
     }

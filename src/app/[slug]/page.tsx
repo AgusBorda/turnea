@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { Barbershop, Barber, Service } from '@/lib/types'
+import { Barber, Service } from '@/lib/types'
 import BookingFlow from './booking-flow'
 
 interface PageProps {
@@ -14,7 +14,18 @@ export default async function BarbershopPage({ params }: PageProps) {
   // Fetch barbershop
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('*')
+    .select(`
+      id,
+      name,
+      description,
+      instagram,
+      logo_url,
+      slot_duration,
+      deposit_required,
+      deposit_percentage,
+      advance_booking_days,
+      mp_configured
+    `)
     .eq('slug', slug)
     .eq('active', true)
     .single()
@@ -72,10 +83,10 @@ export default async function BarbershopPage({ params }: PageProps) {
       {/* Booking flow */}
       <div className="max-w-lg mx-auto px-4 py-6">
         <BookingFlow
-          barbershop={barbershop as Barbershop}
+          barbershop={barbershop}
           barbers={(barbers || []) as Barber[]}
           services={(services || []) as Service[]}
-          mpConfigured={Boolean(barbershop.mp_access_token)}
+          mpConfigured={barbershop.mp_configured}
         />
       </div>
     </main>
