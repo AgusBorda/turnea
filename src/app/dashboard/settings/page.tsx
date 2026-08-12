@@ -9,7 +9,20 @@ export default async function SettingsPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('*')
+    .select(`
+      id,
+      name,
+      slug,
+      description,
+      address,
+      phone,
+      instagram,
+      slot_duration,
+      deposit_required,
+      deposit_percentage,
+      advance_booking_days,
+      mp_configured
+    `)
     .eq('owner_id', user.id)
     .single()
 

@@ -1,13 +1,27 @@
 'use client'
 
 import { useState } from 'react'
-import { Barbershop } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { ExternalLink } from 'lucide-react'
 
+interface SettingsBarbershop {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  address: string | null
+  phone: string | null
+  instagram: string | null
+  slot_duration: number
+  deposit_required: boolean
+  deposit_percentage: number
+  advance_booking_days: number
+  mp_configured: boolean
+}
+
 interface Props {
-  barbershop: Barbershop | null
+  barbershop: SettingsBarbershop | null
   userId: string
 }
 
@@ -21,7 +35,8 @@ export default function SettingsForm({ barbershop, userId }: Props) {
   const [slotDuration, setSlotDuration] = useState(barbershop?.slot_duration || 30)
   const [depositRequired, setDepositRequired] = useState(barbershop?.deposit_required || false)
   const [depositPercentage, setDepositPercentage] = useState(barbershop?.deposit_percentage || 50)
-  const [mpAccessToken, setMpAccessToken] = useState((barbershop as any)?.mp_access_token || '')
+  const [mpConfigured, setMpConfigured] = useState(barbershop?.mp_configured || false)
+  const [newMpAccessToken, setNewMpAccessToken] = useState('')
   const [advanceBookingDays, setAdvanceBookingDays] = useState(barbershop?.advance_booking_days || 30)
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -44,6 +59,19 @@ export default function SettingsForm({ barbershop, userId }: Props) {
     }
   }
 
+  async function saveMercadoPagoCredential(barbershopId: string, accessToken: string) {
+    const response = await fetch('/api/settings/mercado-pago', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ barbershopId, accessToken }),
+    })
+    const result: { error?: string } = await response.json()
+
+    if (!response.ok) {
+      throw new Error(result.error || 'No se pudo guardar la credencial de Mercado Pago.')
+    }
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim() || !slug.trim()) return
@@ -63,9 +91,9 @@ export default function SettingsForm({ barbershop, userId }: Props) {
       slot_duration: slotDuration,
       deposit_required: depositRequired,
       deposit_percentage: depositPercentage,
-      mp_access_token: mpAccessToken.trim() || null,
       advance_booking_days: advanceBookingDays,
     }
+    const accessToken = newMpAccessToken.trim()
 
     if (barbershop) {
       const { error: err } = await supabase
@@ -76,18 +104,40 @@ export default function SettingsForm({ barbershop, userId }: Props) {
       if (err) {
         setError(err.message.includes('unique') ? 'Ese slug ya está en uso.' : err.message)
       } else {
-        setSaved(true)
+        try {
+          if (accessToken) {
+            await saveMercadoPagoCredential(barbershop.id, accessToken)
+            setMpConfigured(true)
+            setNewMpAccessToken('')
+          }
+          setSaved(true)
+          router.refresh()
+        } catch (credentialError) {
+          setError(credentialError instanceof Error ? credentialError.message : 'No se pudo guardar la credencial de Mercado Pago.')
+        }
       }
     } else {
-      const { error: err } = await supabase
+      const { data: createdBarbershop, error: err } = await supabase
         .from('barbershops')
         .insert({ ...data, owner_id: userId })
+        .select('id')
+        .single()
 
       if (err) {
         setError(err.message.includes('unique') ? 'Ese slug ya está en uso.' : err.message)
       } else {
-        setSaved(true)
-        router.refresh()
+        try {
+          if (accessToken) {
+            await saveMercadoPagoCredential(createdBarbershop.id, accessToken)
+            setMpConfigured(true)
+            setNewMpAccessToken('')
+          }
+          setSaved(true)
+          router.refresh()
+        } catch (credentialError) {
+          setError(credentialError instanceof Error ? credentialError.message : 'La barbería se creó, pero no se pudo guardar la credencial de Mercado Pago.')
+          router.refresh()
+        }
       }
     }
 
@@ -235,14 +285,22 @@ export default function SettingsForm({ barbershop, userId }: Props) {
           </p>
         </div>
 
+        {mpConfigured && (
+          <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+            Mercado Pago configurado. Ingresá un token nuevo solamente si querés reemplazar la credencial actual.
+          </div>
+        )}
+
         <div>
-          <label className="block text-sm font-medium mb-1">Access Token</label>
+          <label className="block text-sm font-medium mb-1">
+            {mpConfigured ? 'Nuevo Access Token (opcional)' : 'Access Token'}
+          </label>
           <input
             type="password"
-            value={mpAccessToken}
-            onChange={e => setMpAccessToken(e.target.value)}
+            value={newMpAccessToken}
+            onChange={e => setNewMpAccessToken(e.target.value)}
             className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] font-mono text-sm"
-            placeholder="APP_USR-xxxx... o TEST-xxxx..."
+            placeholder={mpConfigured ? 'Dejar vacío para conservar la credencial actual' : 'APP_USR-xxxx... o TEST-xxxx...'}
             autoComplete="off"
           />
           <p className="text-xs text-[var(--muted)] mt-1">
@@ -257,11 +315,11 @@ export default function SettingsForm({ barbershop, userId }: Props) {
             </a>
             {' '}→ &quot;Credenciales de producción&quot;.
           </p>
-          {mpAccessToken && (
+          {newMpAccessToken && (
             <p className="text-xs mt-1">
-              {mpAccessToken.startsWith('TEST-')
+              {newMpAccessToken.startsWith('TEST-')
                 ? '🟡 Modo prueba (TEST) — los pagos son simulados'
-                : mpAccessToken.startsWith('APP_USR-')
+                : newMpAccessToken.startsWith('APP_USR-')
                 ? '🟢 Modo producción — se cobran pagos reales'
                 : '⚠️ Formato no reconocido'}
             </p>
