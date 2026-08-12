@@ -36,10 +36,10 @@ Antes de sumar funcionalidades importantes, queremos asegurar que Turnea pueda m
 
 Objetivo: evitar que `mp_access_token` pueda quedar expuesto públicamente.
 
-* [ ] Crear tabla privada `barbershop_payment_credentials`
-* [ ] Agregar `mp_configured` a `barbershops`
-* [ ] Crear migration compatible
-* [ ] Migrar credenciales existentes
+* [x] Crear tabla privada `barbershop_payment_credentials`
+* [x] Agregar `mp_configured` a `barbershops`
+* [x] Crear migration compatible
+* [x] Migrar credenciales existentes
 * [ ] Adaptar Settings
 * [ ] Adaptar Checkout
 * [ ] Evitar enviar el token al navegador
