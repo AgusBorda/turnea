@@ -329,8 +329,13 @@ Debe apuntar a **Supabase DEV**:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=URL_DE_SUPABASE_DEV
 NEXT_PUBLIC_SUPABASE_ANON_KEY=KEY_DE_SUPABASE_DEV
+SUPABASE_SERVICE_ROLE_KEY=SERVICE_ROLE_KEY_DE_SUPABASE_DEV
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` es un secreto exclusivamente server-side. Nunca debe usar
+el prefijo `NEXT_PUBLIC_`, exponerse al navegador ni apuntar a Supabase PROD durante
+el desarrollo local o los deploys Preview de `develop`.
 
 ### IMPORTANTE
 
