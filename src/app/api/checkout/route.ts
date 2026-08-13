@@ -235,7 +235,10 @@ export async function POST(req: NextRequest) {
       failure: `${appUrl}/${barbershop.slug}/cancel`,
       pending: `${appUrl}/${barbershop.slug}/success`,
     },
-    ...(!isLocalhost && { auto_return: 'approved' }),
+    ...(!isLocalhost && {
+      auto_return: 'approved',
+      notification_url: `${appUrl}/api/webhooks/mp?barbershop_id=${encodeURIComponent(barbershopId)}`,
+    }),
     external_reference: appointmentId,
   }
 
