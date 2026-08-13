@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
 
   const signatureValidation = validateWebhookSignature(req, webhookSecret)
   if (!signatureValidation.valid) {
+    console.warn('[mp-webhook] invalid x-signature diagnostics', signatureValidation.diagnostics)
     return NextResponse.json(
       { error: 'Firma inválida', signatureDiagnostics: signatureValidation.diagnostics },
       { status: 401 }
