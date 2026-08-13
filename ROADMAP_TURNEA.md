@@ -75,17 +75,27 @@ Objetivo: que Mercado Pago sea seguro y consistente incluso si el cliente cierra
 
 Objetivo: que el booking pueda conocer disponibilidad sin exponer datos de clientes.
 
-* [ ] Crear RPC `get_public_busy_slots`
-* [ ] Devolver solamente `start_time` y `end_time`
-* [ ] Cambiar booking para usar RPC
-* [ ] Eliminar `SELECT USING (true)` de `appointments`
-* [ ] Mantener acceso completo para el owner
-* [ ] Revisar exposición pública de `blocked_slots`
-* [ ] Ocultar `reason` si no es necesario públicamente
-* [ ] Probar booking público
-* [ ] Probar agenda del owner
+- [x] Eliminar SELECT público directo de appointments
+- [x] Crear RPC pública de busy slots
+- [x] Crear RPC mínima para estado de pago
+- [x] Crear RPC mínima para resultado de Success
+- [x] Mantener Agenda/Dashboard protegidos por ownership
+- [x] Centralizar semántica de ocupación
+- [x] Validar Booking después de restringir SELECT
+- [x] Validar Success y Cancel
+- [x] Validar polling
+- [x] Validar acceso anon con prueba real
 
-**Estado:** ⏳ Pendiente
+**Validaciones realizadas:**
+- `anon` no puede ejecutar `SELECT *` sobre `appointments`.
+- `anon` no puede seleccionar campos sensibles.
+- `get_public_busy_slots()` funciona con anon.
+- La RPC pública devuelve únicamente `date`, `start_time` y `end_time`.
+- Booking sigue funcionando.
+- Success, Cancel y polling siguen funcionando.
+- Agenda y Dashboard siguen funcionando para el owner autenticado.
+
+**Estado:** ✅ Completado
 
 ---
 
