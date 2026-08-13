@@ -14,6 +14,11 @@ export function getBarbershopCurrentTime(timeZone: string, now: Date = new Date(
   return `${parts.hour}:${parts.minute}:${parts.second}`
 }
 
+export function getBarbershopCurrentMinutes(timeZone: string, now: Date = new Date()): number {
+  const parts = getZonedParts(timeZone, now)
+  return Number(parts.hour) * 60 + Number(parts.minute)
+}
+
 export function addCalendarDays(localDate: LocalDate, days: number): LocalDate {
   const { year, month, day } = parseLocalDate(localDate)
   const result = new Date(Date.UTC(year, month - 1, day + days))
@@ -23,6 +28,48 @@ export function addCalendarDays(localDate: LocalDate, days: number): LocalDate {
 export function getLocalDateDayOfWeek(localDate: LocalDate): number {
   const { year, month, day } = parseLocalDate(localDate)
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+}
+
+export function getWeekStartLocalDate(
+  localDate: LocalDate,
+  weekStartsOn: 0 | 1 = 1
+): LocalDate {
+  const dayOfWeek = getLocalDateDayOfWeek(localDate)
+  const daysSinceStart = (dayOfWeek - weekStartsOn + 7) % 7
+  return addCalendarDays(localDate, -daysSinceStart)
+}
+
+export function getWeekEndLocalDate(
+  localDate: LocalDate,
+  weekStartsOn: 0 | 1 = 1
+): LocalDate {
+  return addCalendarDays(getWeekStartLocalDate(localDate, weekStartsOn), 6)
+}
+
+export function getMonthStartLocalDate(localDate: LocalDate): LocalDate {
+  const { year, month } = parseLocalDate(localDate)
+  return formatDateParts(year, month, 1)
+}
+
+export function getMonthEndLocalDate(localDate: LocalDate): LocalDate {
+  return addCalendarDays(addCalendarMonths(getMonthStartLocalDate(localDate), 1), -1)
+}
+
+export function addCalendarMonths(localDate: LocalDate, months: number): LocalDate {
+  const { year, month, day } = parseLocalDate(localDate)
+  const targetMonth = new Date(Date.UTC(year, month - 1 + months, 1))
+  const targetYear = targetMonth.getUTCFullYear()
+  const targetMonthNumber = targetMonth.getUTCMonth() + 1
+  const lastDay = parseLocalDate(getMonthEndFromParts(targetYear, targetMonthNumber)).day
+  return formatDateParts(targetYear, targetMonthNumber, Math.min(day, lastDay))
+}
+
+export function isLocalDateToday(
+  localDate: LocalDate,
+  timeZone: string,
+  now: Date = new Date()
+): boolean {
+  return localDate === getBarbershopToday(timeZone, now)
 }
 
 export function isLocalSlotInPast(
@@ -110,4 +157,9 @@ function timeToSeconds(localTime: LocalTime): number {
 
 function formatDateParts(year: number, month: number, day: number): LocalDate {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function getMonthEndFromParts(year: number, month: number): LocalDate {
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  return formatDateParts(year, month, lastDay)
 }

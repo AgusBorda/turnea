@@ -13,7 +13,7 @@ export default async function AgendaPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('id')
+    .select('id, timezone')
     .eq('owner_id', user.id)
     .single()
 
@@ -38,6 +38,7 @@ export default async function AgendaPage() {
   return (
     <AgendaClient
       barbershopId={barbershop.id}
+      timezone={barbershop.timezone}
       barbers={barbers || []}
       services={services || []}
     />
