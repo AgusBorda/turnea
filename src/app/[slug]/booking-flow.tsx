@@ -159,26 +159,19 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
 
       // Flow without deposit — direct booking
       const supabase = createClient()
-      const [hours, minutes] = selectedTime!.split(':').map(Number)
-      const startMinutes = hours * 60 + minutes
-      const endMinutes = startMinutes + selectedService!.duration
-      const endHours = Math.floor(endMinutes / 60)
-      const endMins = endMinutes % 60
-      const endTime = `${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}:00`
+      const { error: aptError } = await supabase.rpc('create_appointment_atomic', {
+        p_barbershop_id: barbershop.id,
+        p_barber_id: selectedBarber!.id,
+        p_service_id: selectedService!.id,
+        p_date: dateStr,
+        p_start_time: `${selectedTime}:00`,
+        p_client_name: clientName.trim(),
+        p_client_phone: clientPhone.trim(),
+      })
 
-      const { error: aptError } = await supabase
-        .from('appointments')
-        .insert({
-          barbershop_id: barbershop.id,
-          barber_id: selectedBarber!.id,
-          service_id: selectedService!.id,
-          date: dateStr,
-          start_time: `${selectedTime}:00`,
-          end_time: endTime,
-          status: 'confirmed',
-          client_name: clientName.trim(),
-          client_phone: clientPhone.trim(),
-        })
+      if (aptError?.message.includes('SLOT_')) {
+        throw new Error('Ese horario acaba de ser reservado. ElegÃ­ otro disponible.')
+      }
 
       if (aptError) throw aptError
 

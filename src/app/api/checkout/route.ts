@@ -153,9 +153,6 @@ export async function POST(req: NextRequest) {
   }
 
   const normalizedStartTime = `${startTime.slice(0, 5)}:00`
-  const endHours = Math.floor(endMinutes / 60)
-  const endMins = endMinutes % 60
-  const endTime = `${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}:00`
   const depositAmount = Math.round(servicePrice * depositPercentage) / 100
   const preferenceStartsAt = new Date()
   const expiresAt = new Date(preferenceStartsAt.getTime() + PENDING_PAYMENT_TTL_MS).toISOString()
@@ -186,30 +183,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Mercado Pago figura configurado pero no tiene una credencial disponible' }, { status: 503 })
   }
 
-  const { data: appointment, error: appointmentError } = await admin
-    .from('appointments')
-    .insert({
-      barbershop_id: barbershopId,
-      barber_id: barberId,
-      service_id: serviceId,
-      date,
-      start_time: normalizedStartTime,
-      end_time: endTime,
-      status: 'pending_payment',
-      deposit_amount: depositAmount,
-      deposit_status: 'pending',
-      expires_at: expiresAt,
-      client_name: clientName,
-      client_phone: clientPhone,
-    })
-    .select('id')
-    .single()
+  const { data: appointmentId, error: appointmentError } = await admin.rpc(
+    'create_appointment_atomic',
+    {
+      p_barbershop_id: barbershopId,
+      p_barber_id: barberId,
+      p_service_id: serviceId,
+      p_date: date,
+      p_start_time: normalizedStartTime,
+      p_client_name: clientName,
+      p_client_phone: clientPhone,
+      p_payment_pending: true,
+      p_deposit_amount: depositAmount,
+      p_expires_at: expiresAt,
+    }
+  )
 
-  if (appointmentError || !appointment) {
-    return NextResponse.json({ error: 'Error al crear turno' }, { status: 500 })
+  if (appointmentError?.message.includes('SLOT_')) {
+    return NextResponse.json(
+      { error: 'Ese horario acaba de ser reservado. ElegÃ­ otro disponible.' },
+      { status: 409 }
+    )
   }
 
-  const appointmentId = appointment.id
+  if (appointmentError || !appointmentId) {
+    return NextResponse.json({ error: 'Error al crear turno' }, { status: 500 })
+  }
 
   async function deletePendingAppointment(): Promise<boolean> {
     const { data, error } = await admin

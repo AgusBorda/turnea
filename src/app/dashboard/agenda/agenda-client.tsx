@@ -330,28 +330,40 @@ export default function AgendaClient({ barbershopId, barbers, services }: Props)
     setActionLoading(true)
     const service = services.find(s => s.id === newServiceId)
     if (!service) { setActionLoading(false); return }
-    const [h, m] = newTime.split(':').map(Number)
-    const startMin = h * 60 + m
-    const endMin = startMin + service.duration
-    const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}:00`
     const supabase = createClient()
-    const { error } = await supabase.from('appointments').insert({
-      barbershop_id: barbershopId, barber_id: newBarberId, service_id: newServiceId,
-      date: newDate, start_time: `${newTime}:00`, end_time: endTime,
-      status: 'confirmed', client_name: newClientName.trim(),
-      client_phone: newClientPhone.trim() || null,
+    const { error } = await supabase.rpc('create_appointment_atomic', {
+      p_barbershop_id: barbershopId,
+      p_barber_id: newBarberId,
+      p_service_id: newServiceId,
+      p_date: newDate,
+      p_start_time: `${newTime}:00`,
+      p_client_name: newClientName.trim(),
+      p_client_phone: newClientPhone.trim() || null,
     })
-    if (!error) { setShowNewForm(false); setNewClientName(''); setNewClientPhone(''); fetchAppointments() }
+    if (error?.message.includes('SLOT_')) {
+      window.alert('Ese horario acaba de ser reservado. ElegÃ­ otro disponible.')
+    } else if (error) {
+      window.alert('No se pudo crear el turno. RevisÃ¡ los datos e intentÃ¡ nuevamente.')
+    } else if (!error) {
+      setShowNewForm(false); setNewClientName(''); setNewClientPhone(''); fetchAppointments()
+    }
     setActionLoading(false)
   }
 
   async function updateStatus(id: string, status: string) {
     setActionLoading(true)
     const supabase = createClient()
-    const updateData: Record<string, unknown> = { status }
-    if (status === 'cancelled') { updateData.cancelled_at = new Date().toISOString(); updateData.cancelled_by = 'owner' }
-    await supabase.from('appointments').update(updateData).eq('id', id)
-    setSelectedApt(null); setActionLoading(false); fetchAppointments()
+    const { data: updated, error } = await supabase.rpc('update_appointment_status_owner', {
+      p_appointment_id: id,
+      p_status: status,
+    })
+    if (error || !updated) {
+      window.alert('No se pudo actualizar el turno. IntentÃ¡ nuevamente.')
+    } else {
+      setSelectedApt(null)
+      fetchAppointments()
+    }
+    setActionLoading(false)
   }
 
   return (

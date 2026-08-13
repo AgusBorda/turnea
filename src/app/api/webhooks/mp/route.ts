@@ -307,21 +307,14 @@ export async function POST(req: NextRequest) {
     return okResponse()
   }
 
-  const { data: confirmedAppointment, error: updateError } = await admin
-    .from('appointments')
-    .update({
-      status: 'confirmed',
-      deposit_status: 'paid',
-      mp_payment_id: verifiedPaymentId,
-    })
-    .eq('id', appointment.id)
-    .eq('barbershop_id', barbershopId)
-    .eq('status', 'pending_payment')
-    .eq('deposit_status', 'pending')
-    .gt('expires_at', new Date().toISOString())
-    .is('mp_payment_id', null)
-    .select('id')
-    .maybeSingle()
+  const { data: confirmedAppointment, error: updateError } = await admin.rpc(
+    'confirm_paid_appointment_atomic',
+    {
+      p_appointment_id: appointment.id,
+      p_barbershop_id: barbershopId,
+      p_payment_id: verifiedPaymentId,
+    }
+  )
 
   if (updateError) {
     return NextResponse.json({ error: 'No se pudo confirmar el turno' }, { status: 500 })
