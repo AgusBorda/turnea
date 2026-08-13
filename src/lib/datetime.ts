@@ -72,6 +72,17 @@ export function isLocalDateToday(
   return localDate === getBarbershopToday(timeZone, now)
 }
 
+export function isLocalDateTimeAfter(
+  localDate: LocalDate,
+  localTime: LocalTime,
+  comparisonDate: LocalDate,
+  comparisonTime: LocalTime
+): boolean {
+  if (localDate > comparisonDate) return true
+  if (localDate < comparisonDate) return false
+  return timeToSeconds(localTime) > timeToSeconds(comparisonTime)
+}
+
 export function isLocalSlotInPast(
   localDate: LocalDate,
   localTime: LocalTime,

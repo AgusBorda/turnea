@@ -1,9 +1,23 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { format, startOfWeek, startOfMonth, addDays } from 'date-fns'
-import { es } from 'date-fns/locale'
 import Link from 'next/link'
 import DashboardStats from './dashboard-stats'
+import {
+  addCalendarDays,
+  formatLocalDate,
+  getBarbershopCurrentTime,
+  getBarbershopToday,
+  getMonthEndLocalDate,
+  getMonthStartLocalDate,
+  getWeekEndLocalDate,
+  getWeekStartLocalDate,
+  isLocalDateTimeAfter,
+} from '@/lib/datetime'
+
+interface StatsAppointment {
+  status: string
+  services: { price: number } | null
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -12,7 +26,7 @@ export default async function DashboardPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('*')
+    .select('id, name, slug, timezone')
     .eq('owner_id', user.id)
     .single()
 
@@ -20,11 +34,13 @@ export default async function DashboardPage() {
     return <SetupPrompt />
   }
 
-  const today       = format(new Date(), 'yyyy-MM-dd')
-  const weekStart   = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
-  const monthStart  = format(startOfMonth(new Date()), 'yyyy-MM-dd')
-  const tomorrow    = format(addDays(new Date(), 1), 'yyyy-MM-dd')
-  const nextWeekEnd = format(addDays(new Date(), 7), 'yyyy-MM-dd')
+  const today       = getBarbershopToday(barbershop.timezone)
+  const weekStart   = getWeekStartLocalDate(today, 1)
+  const weekEnd     = getWeekEndLocalDate(today, 1)
+  const monthStart  = getMonthStartLocalDate(today)
+  const monthEnd    = getMonthEndLocalDate(today)
+  const tomorrow    = addCalendarDays(today, 1)
+  const nextWeekEnd = addCalendarDays(today, 7)
 
   // Fetch todo en paralelo
   const [
@@ -44,13 +60,13 @@ export default async function DashboardPage() {
       .select('*, services(name, price)')
       .eq('barbershop_id', barbershop.id)
       .gte('date', weekStart)
-      .lte('date', today),
+      .lte('date', weekEnd),
     supabase
       .from('appointments')
       .select('*, services(name, price)')
       .eq('barbershop_id', barbershop.id)
       .gte('date', monthStart)
-      .lte('date', today),
+      .lte('date', monthEnd),
     supabase
       .from('appointments')
       .select('*, barbers(name), services(name, price)')
@@ -63,13 +79,13 @@ export default async function DashboardPage() {
       .limit(6),
   ])
 
-  function computeStats(appts: any[]) {
+  function computeStats(appts: StatsAppointment[]) {
     const nonCancelled = appts.filter(a => a.status !== 'cancelled')
     const completed    = appts.filter(a => a.status === 'completed')
     return {
       total:     nonCancelled.length,
       completed: completed.length,
-      revenue:   completed.reduce((s: number, a: any) => s + (a.services?.price || 0), 0),
+      revenue:   completed.reduce((sum, appointment) => sum + (appointment.services?.price || 0), 0),
       noShows:   appts.filter(a => a.status === 'no_show').length,
       cancelled: appts.filter(a => a.status === 'cancelled').length,
     }
@@ -82,8 +98,8 @@ export default async function DashboardPage() {
   // Servicio más pedido del mes
   const serviceCount: Record<string, { count: number; name: string }> = {}
   ;(monthAppts || [])
-    .filter((a: any) => a.services && a.status !== 'cancelled')
-    .forEach((a: any) => {
+    .filter(a => a.services && a.status !== 'cancelled')
+    .forEach(a => {
       const key = a.service_id || a.services.name
       if (!serviceCount[key]) serviceCount[key] = { count: 0, name: a.services.name }
       serviceCount[key].count++
@@ -91,19 +107,20 @@ export default async function DashboardPage() {
   const topService =
     Object.values(serviceCount).sort((a, b) => b.count - a.count)[0] || null
 
-  const dayOfMonth = new Date().getDate()
+  const dayOfMonth = Number(today.slice(8, 10))
   const avgPerDay  = dayOfMonth > 0 ? Math.round(monthStats.total / dayOfMonth) : 0
 
-  const now    = format(new Date(), 'HH:mm:ss')
+  const nowTime = getBarbershopCurrentTime(barbershop.timezone)
   const nextApt =
     (todayAppts || []).find(
-      (a: any) => a.start_time >= now && a.status !== 'cancelled'
+      a => isLocalDateTimeAfter(a.date, a.start_time, today, nowTime)
+        && a.status !== 'cancelled'
     ) || null
 
   return (
     <DashboardStats
       barbershop={{ name: barbershop.name, slug: barbershop.slug }}
-      todayLabel={format(new Date(), "EEEE d 'de' MMMM", { locale: es })}
+      todayLabel={formatLocalDate(today, { weekday: 'long', day: 'numeric', month: 'long' })}
       today={{ ...todayStats, appointments: todayAppts || [], nextApt }}
       week={weekStats}
       month={{ ...monthStats, topService, avgPerDay }}
