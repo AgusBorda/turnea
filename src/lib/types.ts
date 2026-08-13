@@ -127,3 +127,9 @@ export interface TimeSlot {
   time: string
   available: boolean
 }
+
+export interface BusySlot {
+  date: string
+  start_time: string
+  end_time: string
+}

@@ -18,6 +18,11 @@ interface StatusCardProps {
   message: string
 }
 
+interface PaymentStatusView {
+  status: string
+  deposit_status: string | null
+}
+
 export default async function CancelPage({ params, searchParams }: PageProps) {
   const { slug } = await params
   const { external_reference: appointmentId } = await searchParams
@@ -39,12 +44,13 @@ export default async function CancelPage({ params, searchParams }: PageProps) {
     return <GenericCard slug={barbershop.slug} />
   }
 
-  const { data: appointment, error: appointmentError } = await supabase
-    .from('appointments')
-    .select('status, deposit_status')
-    .eq('id', appointmentId)
-    .eq('barbershop_id', barbershop.id)
+  const { data: appointmentData, error: appointmentError } = await supabase
+    .rpc('get_public_appointment_payment_status', {
+      p_appointment_id: appointmentId,
+      p_barbershop_id: barbershop.id,
+    })
     .maybeSingle()
+  const appointment = appointmentData as PaymentStatusView | null
 
   if (appointmentError || !appointment) {
     return <GenericCard slug={barbershop.slug} />

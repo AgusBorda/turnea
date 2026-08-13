@@ -75,12 +75,17 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         .eq('barber_id', selectedBarber!.id)
 
       // Fetch existing appointments for that date
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select('start_time, end_time, status, expires_at')
-        .eq('barber_id', selectedBarber!.id)
-        .eq('date', dateStr)
-        .neq('status', 'cancelled')
+      const { data: busySlots, error: busySlotsError } = await supabase.rpc(
+        'get_public_busy_slots',
+        {
+          p_barbershop_id: barbershop.id,
+          p_barber_id: selectedBarber!.id,
+          p_date_from: dateStr,
+          p_date_to: dateStr,
+        }
+      )
+
+      if (busySlotsError) throw busySlotsError
 
       // Fetch blocked slots
       const { data: blockedSlots } = await supabase
@@ -94,7 +99,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
       const slots = generateTimeSlots(
         date,
         schedules || [],
-        appointments || [],
+        busySlots || [],
         blockedSlots || [],
         barbershop.slot_duration,
         selectedService!.duration

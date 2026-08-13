@@ -28,8 +28,9 @@ interface AppointmentView {
   status: string
   deposit_status: string | null
   deposit_amount: number | null
-  barbers: { name: string }[]
-  services: { name: string; price: number }[]
+  barber_name: string
+  service_name: string | null
+  service_price: number | null
 }
 
 export default async function SuccessPage({ params, searchParams }: PageProps) {
@@ -53,20 +54,13 @@ export default async function SuccessPage({ params, searchParams }: PageProps) {
 
   if (!barbershop) notFound()
 
-  const { data: appointment, error: appointmentError } = await supabase
-    .from('appointments')
-    .select(`
-      date,
-      start_time,
-      status,
-      deposit_status,
-      deposit_amount,
-      barbers(name),
-      services(name, price)
-    `)
-    .eq('id', appointmentId)
-    .eq('barbershop_id', barbershop.id)
+  const { data: appointmentData, error: appointmentError } = await supabase
+    .rpc('get_public_appointment_result', {
+      p_appointment_id: appointmentId,
+      p_barbershop_id: barbershop.id,
+    })
     .maybeSingle()
+  const appointment = appointmentData as AppointmentView | null
 
   if (appointmentError || !appointment) {
     return <ErrorCard slug={slug} message="No encontramos esa reserva." />
@@ -76,7 +70,7 @@ export default async function SuccessPage({ params, searchParams }: PageProps) {
     return (
       <SuccessCard
         barbershop={barbershop}
-        appointment={appointment as AppointmentView}
+        appointment={appointment}
       />
     )
   }
@@ -85,7 +79,7 @@ export default async function SuccessPage({ params, searchParams }: PageProps) {
     return (
       <PendingCard
         barbershop={barbershop}
-        appointment={appointment as AppointmentView}
+        appointment={appointment}
         appointmentId={appointmentId}
       />
     )
@@ -107,7 +101,7 @@ function SuccessCard({
   appointment: AppointmentView
 }) {
   const depositAmount = Number(appointment.deposit_amount) || 0
-  const servicePrice = Number(appointment.services[0]?.price) || 0
+  const servicePrice = Number(appointment.service_price) || 0
   const remaining = Math.max(servicePrice - depositAmount, 0)
 
   return (
@@ -178,7 +172,7 @@ function PendingCard({
           Puede tardar unos segundos. Esta pantalla se actualizará automáticamente cuando recibamos la confirmación.
         </p>
         <div className="bg-white rounded-xl border border-gray-200 p-4 text-sm mb-4">
-          <p className="font-medium">{appointment.services[0]?.name}</p>
+          <p className="font-medium">{appointment.service_name}</p>
           <p className="text-gray-500">
             {format(new Date(`${appointment.date}T00:00:00`), "EEEE d 'de' MMMM", { locale: es })}
             {' — '}
@@ -221,10 +215,10 @@ function AppointmentDetails({
         <span className="font-medium">{appointment.start_time.slice(0, 5)} hs</span>
       </InfoRow>
       <InfoRow icon={null} label="Servicio">
-        <span className="font-medium">{appointment.services[0]?.name}</span>
+        <span className="font-medium">{appointment.service_name}</span>
       </InfoRow>
       <InfoRow icon={null} label="Barbero">
-        <span className="font-medium">{appointment.barbers[0]?.name}</span>
+        <span className="font-medium">{appointment.barber_name}</span>
       </InfoRow>
       {barbershop.address && (
         <InfoRow icon={<MapPin className="w-4 h-4 text-purple-600" />} label="Dirección">

@@ -5,6 +5,11 @@ import { createClient } from '@/lib/supabase/server'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
+interface PaymentStatusView {
+  status: string
+  deposit_status: string | null
+}
+
 export async function GET(request: NextRequest) {
   const appointmentId = request.nextUrl.searchParams.get('appointment_id')?.trim() || ''
   const slug = request.nextUrl.searchParams.get('slug')?.trim() || ''
@@ -28,12 +33,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Reserva no encontrada' }, { status: 404 })
   }
 
-  const { data: appointment, error: appointmentError } = await supabase
-    .from('appointments')
-    .select('status, deposit_status')
-    .eq('id', appointmentId)
-    .eq('barbershop_id', barbershop.id)
+  const { data: appointmentData, error: appointmentError } = await supabase
+    .rpc('get_public_appointment_payment_status', {
+      p_appointment_id: appointmentId,
+      p_barbershop_id: barbershop.id,
+    })
     .maybeSingle()
+  const appointment = appointmentData as PaymentStatusView | null
 
   if (appointmentError) {
     return NextResponse.json({ error: 'No se pudo consultar el estado' }, { status: 500 })
