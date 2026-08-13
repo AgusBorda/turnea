@@ -27,6 +27,20 @@ interface MercadoPagoMerchantOrder {
   preference_id?: unknown
 }
 
+interface SignatureValidationResult {
+  valid: boolean
+  diagnostics: {
+    hasDataIdQuery: boolean
+    hasRequestId: boolean
+    hasSignature: boolean
+    hasTimestamp: boolean
+    hasV1Hash: boolean
+    signatureLength: number
+    manifest: string
+    queryParamNames: string[]
+  }
+}
+
 function okResponse() {
   return NextResponse.json({ ok: true })
 }
@@ -55,14 +69,12 @@ function isMerchantOrder(value: unknown): value is MercadoPagoMerchantOrder {
   return typeof value === 'object' && value !== null
 }
 
-function isValidWebhookSignature(req: NextRequest, secret: string): boolean {
+function validateWebhookSignature(req: NextRequest, secret: string): SignatureValidationResult {
   const xSignature = req.headers.get('x-signature')
-  if (!xSignature) return false
-
   let timestamp = ''
   let receivedHash = ''
 
-  for (const part of xSignature.split(',')) {
+  for (const part of xSignature?.split(',') || []) {
     const separatorIndex = part.indexOf('=')
     if (separatorIndex === -1) continue
 
@@ -73,8 +85,6 @@ function isValidWebhookSignature(req: NextRequest, secret: string): boolean {
     if (key === 'v1') receivedHash = value.toLowerCase()
   }
 
-  if (!/^[0-9a-f]{64}$/.test(receivedHash)) return false
-
   const dataId = req.nextUrl.searchParams.get('data.id')?.toLowerCase() || ''
   const requestId = req.headers.get('x-request-id') || ''
   const manifest = [
@@ -83,10 +93,28 @@ function isValidWebhookSignature(req: NextRequest, secret: string): boolean {
     timestamp ? `ts:${timestamp};` : '',
   ].join('')
 
+  const diagnostics = {
+    hasDataIdQuery: Boolean(dataId),
+    hasRequestId: Boolean(requestId),
+    hasSignature: Boolean(xSignature),
+    hasTimestamp: Boolean(timestamp),
+    hasV1Hash: /^[0-9a-f]{64}$/.test(receivedHash),
+    signatureLength: xSignature?.length || 0,
+    manifest,
+    queryParamNames: [...new Set(req.nextUrl.searchParams.keys())].sort(),
+  }
+
+  if (!diagnostics.hasV1Hash) {
+    return { valid: false, diagnostics }
+  }
+
   const expectedHash = createHmac('sha256', secret).update(manifest).digest()
   const receivedHashBuffer = Buffer.from(receivedHash, 'hex')
 
-  return receivedHashBuffer.length === expectedHash.length && timingSafeEqual(receivedHashBuffer, expectedHash)
+  return {
+    valid: receivedHashBuffer.length === expectedHash.length && timingSafeEqual(receivedHashBuffer, expectedHash),
+    diagnostics,
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -103,8 +131,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Webhook no configurado' }, { status: 500 })
   }
 
-  if (!isValidWebhookSignature(req, webhookSecret)) {
-    return NextResponse.json({ error: 'Firma inválida' }, { status: 401 })
+  const signatureValidation = validateWebhookSignature(req, webhookSecret)
+  if (!signatureValidation.valid) {
+    return NextResponse.json(
+      { error: 'Firma inválida', signatureDiagnostics: signatureValidation.diagnostics },
+      { status: 401 }
+    )
   }
 
   const notificationType = typeof body.type === 'string'
