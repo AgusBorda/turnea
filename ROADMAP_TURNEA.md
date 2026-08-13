@@ -147,16 +147,46 @@ Objetivo: garantizar desde backend/base de datos que dos clientes no puedan rese
 
 ---
 
-### ⏳ Ticket 6 — Reservas pendientes de pago
+### ✅ Ticket 6 — Reservas pendientes de pago
 
-* [ ] Definir expiración de `pending_payment`
-* [ ] Liberar horarios cuando vence una reserva
-* [ ] Evitar bloqueos eternos por pagos abandonados
-* [ ] Definir comportamiento cuando Mercado Pago falla
-* [ ] Revisar cancelaciones
+* [x] Definir expiración de `pending_payment`
+  * Las reservas pendientes vencen a los 15 minutos mediante `expires_at`.
 
-**Estado:** ⏳ Pendiente
+* [x] Liberar horarios cuando vence una reserva
+  * Los `pending_payment` vencidos dejan de bloquear disponibilidad automáticamente.
+  * La liberación no depende del cron.
 
+* [x] Evitar bloqueos eternos por pagos abandonados
+  * Se implementó `cleanup_expired_pending_payments()`.
+  * Los pagos pendientes vencidos pasan automáticamente a:
+    * `status = 'cancelled'`
+    * `cancelled_by = 'payment_expired'`
+    * `cancelled_at = clock_timestamp()`
+  * `deposit_status` permanece en `pending` para conservar trazabilidad.
+  * Cleanup automático mediante Supabase `pg_cron` cada 5 minutos.
+
+* [x] Definir comportamiento cuando Mercado Pago falla
+  * Si el pago no se completa antes de `expires_at`, el turno vence y se libera.
+  * El webhook no puede confirmar un appointment vencido.
+  * Un pago confirmado correctamente antes del vencimiento pasa a `confirmed / paid` y nunca es afectado por el cleanup.
+
+* [x] Revisar cancelaciones
+  * Las reservas vencidas se registran como `cancelled`.
+  * Se diferencia una expiración automática mediante `cancelled_by = 'payment_expired'`.
+  * Agenda y Dashboard mantienen un comportamiento coherente con turnos cancelados.
+
+**Validaciones realizadas:**
+* Cleanup manual de un `pending_payment` vencido → 1 fila cancelada.
+* Segunda ejecución → 0 filas, confirmando idempotencia.
+* `pending_payment` vigente no es afectado.
+* `confirmed / paid` no puede ser cancelado por el cleanup.
+* `pg_cron` instalado en Supabase DEV (`1.6.4`).
+* Job `turnea-cleanup-expired-pending-payments` activo cada 5 minutos.
+* Ejecución automática real validada correctamente mediante `cron.job_run_details`.
+
+**Estado:** ✅ Completado
+
+> Pendiente separado: definir conciliación/reembolso para el caso excepcional en que Mercado Pago acredite un pago después del vencimiento del turno.
 ---
 
 ### ⏳ Ticket 7 — Fechas y timezone
