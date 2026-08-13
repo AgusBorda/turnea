@@ -3,14 +3,18 @@
 import { useState } from 'react'
 import { Barbershop, Barber, Service, TimeSlot } from '@/lib/types'
 import { formatPrice, formatDuration } from '@/lib/utils'
+import {
+  addCalendarDays,
+  formatLocalDate,
+  getBarbershopToday,
+  LocalDate,
+} from '@/lib/datetime'
 import { createClient } from '@/lib/supabase/client'
-import { format, addDays } from 'date-fns'
-import { es } from 'date-fns/locale'
 import { Check, ChevronLeft, Clock, User, Scissors, Calendar, CreditCard, Wallet } from 'lucide-react'
 
 type BookingBarbershop = Pick<
   Barbershop,
-  'id' | 'slot_duration' | 'deposit_required' | 'deposit_percentage' | 'advance_booking_days'
+  'id' | 'slot_duration' | 'deposit_required' | 'deposit_percentage' | 'advance_booking_days' | 'timezone'
 >
 
 interface Props {
@@ -26,7 +30,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
   const [step, setStep] = useState<Step>('service')
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null)
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [selectedDate, setSelectedDate] = useState<LocalDate | null>(null)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
   const [loading, setLoading] = useState(false)
@@ -59,15 +63,13 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     setStep('date')
   }
 
-  async function selectDate(date: Date) {
+  async function selectDate(date: LocalDate) {
     setSelectedDate(date)
     setLoading(true)
     setError('')
 
     try {
       const supabase = createClient()
-      const dateStr = format(date, 'yyyy-MM-dd')
-
       // Fetch schedules for barber
       const { data: schedules } = await supabase
         .from('barber_schedules')
@@ -80,8 +82,8 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         {
           p_barbershop_id: barbershop.id,
           p_barber_id: selectedBarber!.id,
-          p_date_from: dateStr,
-          p_date_to: dateStr,
+          p_date_from: date,
+          p_date_to: date,
         }
       )
 
@@ -93,8 +95,8 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         {
           p_barbershop_id: barbershop.id,
           p_barber_id: selectedBarber!.id,
-          p_date_from: dateStr,
-          p_date_to: dateStr,
+          p_date_from: date,
+          p_date_to: date,
         }
       )
 
@@ -107,6 +109,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         schedules || [],
         busySlots || [],
         blockedSlots || [],
+        barbershop.timezone,
         barbershop.slot_duration,
         selectedService!.duration
       )
@@ -140,7 +143,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     setError('')
 
     try {
-      const dateStr = format(selectedDate!, 'yyyy-MM-dd')
+      const dateStr = selectedDate!
 
       if (requiresDeposit) {
         // Flow with Mercado Pago deposit
@@ -207,7 +210,9 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         </p>
         <div className="bg-[var(--secondary)] rounded-lg p-4 text-sm">
           <p className="font-medium">
-            {selectedDate && format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+            {selectedDate && formatLocalDate(selectedDate, {
+              weekday: 'long', day: 'numeric', month: 'long',
+            })}
           </p>
           <p className="text-[var(--muted)]">{selectedTime} hs</p>
         </div>
@@ -324,20 +329,20 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
           </h2>
           <div className="grid grid-cols-3 gap-2">
             {Array.from({ length: barbershop.advance_booking_days }, (_, i) => {
-              const date = addDays(new Date(), i + 1)
+              const date = addCalendarDays(getBarbershopToday(barbershop.timezone), i)
               return (
                 <button
-                  key={i}
+                  key={date}
                   onClick={() => selectDate(date)}
                   disabled={loading}
                   className="bg-white p-3 rounded-xl border border-[var(--border)] hover:border-[var(--primary)] hover:shadow-sm transition-all text-center disabled:opacity-50"
                 >
                   <p className="text-xs text-[var(--muted)] capitalize">
-                    {format(date, 'EEE', { locale: es })}
+                    {formatLocalDate(date, { weekday: 'short' })}
                   </p>
-                  <p className="font-semibold text-lg">{format(date, 'd')}</p>
+                  <p className="font-semibold text-lg">{formatLocalDate(date, { day: 'numeric' })}</p>
                   <p className="text-xs text-[var(--muted)]">
-                    {format(date, 'MMM', { locale: es })}
+                    {formatLocalDate(date, { month: 'short' })}
                   </p>
                 </button>
               )
@@ -357,7 +362,9 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             Elegí un horario
           </h2>
           <p className="text-sm text-[var(--muted)] mb-4">
-            {selectedDate && format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+            {selectedDate && formatLocalDate(selectedDate, {
+              weekday: 'long', day: 'numeric', month: 'long',
+            })}
           </p>
           {timeSlots.length === 0 ? (
             <div className="bg-white rounded-xl p-6 text-center border border-[var(--border)]">
@@ -408,7 +415,9 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             <div className="flex justify-between">
               <span className="text-[var(--muted)]">Día</span>
               <span className="font-medium capitalize">
-                {selectedDate && format(selectedDate, "EEE d MMM", { locale: es })}
+                {selectedDate && formatLocalDate(selectedDate, {
+                  weekday: 'short', day: 'numeric', month: 'short',
+                })}
               </span>
             </div>
             <div className="flex justify-between">

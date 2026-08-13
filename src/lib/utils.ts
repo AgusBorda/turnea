@@ -1,38 +1,44 @@
-import { format, addMinutes, parse, isBefore, isEqual } from 'date-fns'
 import { BarberSchedule, BusySlot, PublicBlockedSlot, TimeSlot } from './types'
+import { getLocalDateDayOfWeek, isLocalSlotInPast, LocalDate } from './datetime'
 
 /**
  * Genera los time slots disponibles para un barbero en una fecha dada
  */
 export function generateTimeSlots(
-  date: Date,
+  date: LocalDate,
   schedules: BarberSchedule[],
   busySlots: BusySlot[],
   blockedSlots: PublicBlockedSlot[],
+  timeZone: string,
   slotDuration: number = 30,
   serviceDuration: number = 30
 ): TimeSlot[] {
-  const dayOfWeek = date.getDay()
+  const dayOfWeek = getLocalDateDayOfWeek(date)
   const schedule = schedules.find(s => s.day_of_week === dayOfWeek && s.is_working)
 
   if (!schedule) return []
 
   const slots: TimeSlot[] = []
-  const startTime = parse(schedule.start_time, 'HH:mm:ss', date)
-  const endTime = parse(schedule.end_time, 'HH:mm:ss', date)
+  const startTime = timeToMinutes(schedule.start_time)
+  const endTime = timeToMinutes(schedule.end_time)
 
   let current = startTime
 
-  while (isBefore(current, endTime) || isEqual(current, endTime)) {
-    const slotEnd = addMinutes(current, serviceDuration)
+  while (current <= endTime) {
+    const slotEnd = current + serviceDuration
 
     // No generar slot si se pasa del horario de fin
-    if (!isBefore(slotEnd, endTime) && !isEqual(slotEnd, endTime)) {
+    if (slotEnd > endTime) {
       break
     }
 
-    const timeStr = format(current, 'HH:mm')
-    const timeStrFull = format(current, 'HH:mm:ss')
+    const timeStr = minutesToTime(current, false)
+    const timeStrFull = minutesToTime(current, true)
+
+    if (isLocalSlotInPast(date, timeStrFull, timeZone)) {
+      current += slotDuration
+      continue
+    }
 
     // Verificar si está bloqueado
     const isBlocked = blockedSlots.some(block => {
@@ -50,10 +56,22 @@ export function generateTimeSlots(
       available: !isBlocked && !hasAppointment,
     })
 
-    current = addMinutes(current, slotDuration)
+    current += slotDuration
   }
 
   return slots
+}
+
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function minutesToTime(minutes: number, includeSeconds: boolean): string {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  const value = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+  return includeSeconds ? `${value}:00` : value
 }
 
 /**

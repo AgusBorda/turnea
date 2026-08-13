@@ -24,6 +24,7 @@ export default async function BarbershopPage({ params }: PageProps) {
       deposit_required,
       deposit_percentage,
       advance_booking_days,
+      timezone,
       mp_configured
     `)
     .eq('slug', slug)
