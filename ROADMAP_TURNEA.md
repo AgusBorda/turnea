@@ -63,7 +63,7 @@ Objetivo: que Mercado Pago sea seguro y consistente incluso si el cliente cierra
 * [x] Validar moneda
 * [x] Validar barbería correspondiente
 * [x] Verificar errores de Supabase
-* [ ] Evitar que `/success` confirme pagos por sí solo
+* [x] Evitar que `/success` confirme pagos por sí solo
 * [ ] Revisar flujo `/cancel`
 * [ ] Probar pagos correctamente en DEV
 
