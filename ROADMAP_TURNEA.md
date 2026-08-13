@@ -56,13 +56,13 @@ Objetivo: evitar que `mp_access_token` pueda quedar expuesto públicamente.
 
 Objetivo: que Mercado Pago sea seguro y consistente incluso si el cliente cierra la página o manipula redirects.
 
-* [ ] Implementar webhook real de Mercado Pago
-* [ ] Usar webhook como fuente confiable del pago
-* [ ] Validar `external_reference`
-* [ ] Validar importe
-* [ ] Validar moneda
-* [ ] Validar barbería correspondiente
-* [ ] Verificar errores de Supabase
+* [x] Implementar webhook real de Mercado Pago
+* [x] Usar webhook como fuente confiable del pago
+* [x] Validar `external_reference`
+* [x] Validar importe
+* [x] Validar moneda
+* [x] Validar barbería correspondiente
+* [x] Verificar errores de Supabase
 * [ ] Evitar que `/success` confirme pagos por sí solo
 * [ ] Revisar flujo `/cancel`
 * [ ] Probar pagos correctamente en DEV
