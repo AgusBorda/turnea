@@ -202,6 +202,22 @@ Objetivo: garantizar desde backend/base de datos que dos clientes no puedan rese
 
 ---
 
+### ⏳ Ticket 8 — Pagos tardíos y conciliación Mercado Pago
+
+* [ ] Detectar pagos acreditados después del vencimiento de una reserva
+* [ ] Evitar confirmar turnos vencidos aunque Mercado Pago informe pago aprobado
+* [ ] Registrar correctamente el pago tardío para auditoría
+* [ ] Definir estado de conciliación para estos casos
+* [ ] Definir flujo de revisión manual
+* [ ] Evaluar reembolso manual vs automático
+* [ ] Mantener trazabilidad entre appointment, preference y payment de Mercado Pago
+* [ ] Definir qué ve el cliente si pagó pero su reserva ya había vencido
+* [ ] Definir qué ve la barbería ante un pago que requiere conciliación
+
+**Estado:** ⏳ Pendiente
+
+---
+
 ## 🧹 Deuda técnica
 
 ### ⏳ Tipado Supabase
