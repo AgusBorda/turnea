@@ -99,6 +99,29 @@ Objetivo: que el booking pueda conocer disponibilidad sin exponer datos de clien
 
 ---
 
+### ✅ Ticket 4.1 — Privacidad de blocked_slots
+
+Objetivo: impedir que usuarios públicos puedan leer metadata interna de bloqueos y exponer únicamente la información necesaria para disponibilidad.
+
+- [x] Crear RPC pública mínima para blocked_slots
+- [x] Reemplazar SELECT público directo en Booking
+- [x] Retirar acceso directo de anon a blocked_slots
+- [x] Ocultar reason, id y created_at
+- [x] Mantener lógica de bloqueos parciales y de día completo
+- [x] Validar RPC con anon
+- [x] Validar Booking después de restringir acceso
+
+**Validaciones realizadas:**
+- `anon` no puede ejecutar `SELECT *` sobre `blocked_slots`.
+- `anon` no puede consultar `reason`, `id` ni `created_at`.
+- `get_public_blocked_slots()` funciona con anon.
+- La RPC devuelve únicamente `date`, `start_time`, `end_time` y `all_day`.
+- Booking respeta correctamente los blocked slots usando la RPC.
+
+**Estado:** ✅ Completado
+
+---
+
 ### ✅ Ticket 5 — Evitar dobles reservas
 
 Objetivo: garantizar desde backend/base de datos que dos clientes no puedan reservar el mismo horario.
