@@ -31,22 +31,41 @@ export default function PaymentStatusPolling({ appointmentId, slug }: Props) {
       requestInFlight = true
 
       try {
-        const query = new URLSearchParams({ appointment_id: appointmentId, slug })
+        const query = new URLSearchParams({
+          appointment_id: appointmentId,
+          slug,
+          poll_attempt: String(attempts),
+        })
         const response = await fetch(`/api/appointments/payment-status?${query}`, {
           cache: 'no-store',
         })
 
-        if (response.ok) {
+        if (!response.ok) {
+          console.warn('[payment-status-polling] request failed', {
+            attempt: attempts,
+            httpStatus: response.status,
+          })
+        } else {
           const paymentStatus = await response.json() as PaymentStatusResponse
+
+          console.debug('[payment-status-polling] response', {
+            attempt: attempts,
+            httpStatus: response.status,
+            status: paymentStatus.status,
+            depositStatus: paymentStatus.deposit_status,
+          })
 
           if (paymentStatus.status === 'confirmed' && paymentStatus.deposit_status === 'paid') {
             stopped = true
             window.clearInterval(interval)
+            console.debug('[payment-status-polling] refreshing confirmed appointment', {
+              attempt: attempts,
+            })
             router.refresh()
           }
         }
       } catch {
-        // Keep the pending screen stable and allow the next polling attempt.
+        console.warn('[payment-status-polling] request error', { attempt: attempts })
       } finally {
         requestInFlight = false
       }
