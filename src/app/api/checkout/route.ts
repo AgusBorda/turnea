@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d(?::00)?$/
+const PENDING_PAYMENT_TTL_MS = 15 * 60 * 1000
 
 interface CheckoutRequest {
   barbershop_id?: unknown
@@ -156,6 +157,8 @@ export async function POST(req: NextRequest) {
   const endMins = endMinutes % 60
   const endTime = `${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}:00`
   const depositAmount = Math.round(servicePrice * depositPercentage) / 100
+  const preferenceStartsAt = new Date()
+  const expiresAt = new Date(preferenceStartsAt.getTime() + PENDING_PAYMENT_TTL_MS).toISOString()
 
   if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
     return NextResponse.json({ error: 'Monto de seña inválido' }, { status: 400 })
@@ -195,6 +198,7 @@ export async function POST(req: NextRequest) {
       status: 'pending_payment',
       deposit_amount: depositAmount,
       deposit_status: 'pending',
+      expires_at: expiresAt,
       client_name: clientName,
       client_phone: clientPhone,
     })
@@ -240,6 +244,9 @@ export async function POST(req: NextRequest) {
       notification_url: `${appUrl}/api/webhooks/mp?barbershop_id=${encodeURIComponent(barbershopId)}`,
     }),
     external_reference: appointmentId,
+    expires: true,
+    expiration_date_from: preferenceStartsAt.toISOString(),
+    expiration_date_to: expiresAt,
   }
 
   let mercadoPagoResponse: Response

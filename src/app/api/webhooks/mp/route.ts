@@ -217,7 +217,7 @@ export async function POST(req: NextRequest) {
 
   const { data: appointment, error: appointmentError } = await admin
     .from('appointments')
-    .select('id, barbershop_id, status, deposit_status, deposit_amount, mp_preference_id, mp_payment_id')
+    .select('id, barbershop_id, status, deposit_status, deposit_amount, expires_at, mp_preference_id, mp_payment_id')
     .eq('id', externalReference)
     .maybeSingle()
 
@@ -242,6 +242,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (payment.status !== 'approved') {
+    return okResponse()
+  }
+
+  if (!appointment.expires_at || new Date(appointment.expires_at).getTime() <= Date.now()) {
     return okResponse()
   }
 
@@ -314,6 +318,7 @@ export async function POST(req: NextRequest) {
     .eq('barbershop_id', barbershopId)
     .eq('status', 'pending_payment')
     .eq('deposit_status', 'pending')
+    .gt('expires_at', new Date().toISOString())
     .is('mp_payment_id', null)
     .select('id')
     .maybeSingle()
@@ -325,12 +330,21 @@ export async function POST(req: NextRequest) {
   if (!confirmedAppointment) {
     const { data: currentAppointment, error: currentAppointmentError } = await admin
       .from('appointments')
-      .select('status, deposit_status, mp_payment_id')
+      .select('status, deposit_status, expires_at, mp_payment_id')
       .eq('id', appointment.id)
       .maybeSingle()
 
     if (currentAppointmentError) {
       return NextResponse.json({ error: 'No se pudo verificar la confirmación' }, { status: 500 })
+    }
+
+    if (
+      currentAppointment?.status === 'pending_payment' &&
+      currentAppointment.deposit_status === 'pending' &&
+      currentAppointment.expires_at &&
+      new Date(currentAppointment.expires_at).getTime() <= Date.now()
+    ) {
+      return okResponse()
     }
 
     if (

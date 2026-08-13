@@ -77,7 +77,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
       // Fetch existing appointments for that date
       const { data: appointments } = await supabase
         .from('appointments')
-        .select('*')
+        .select('start_time, end_time, status, expires_at')
         .eq('barber_id', selectedBarber!.id)
         .eq('date', dateStr)
         .neq('status', 'cancelled')

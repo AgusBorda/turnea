@@ -1,13 +1,15 @@
 import { format, addMinutes, parse, isBefore, isEqual } from 'date-fns'
 import { BarberSchedule, BlockedSlot, Appointment, TimeSlot } from './types'
 
+type AvailabilityAppointment = Pick<Appointment, 'start_time' | 'end_time' | 'status' | 'expires_at'>
+
 /**
  * Genera los time slots disponibles para un barbero en una fecha dada
  */
 export function generateTimeSlots(
   date: Date,
   schedules: BarberSchedule[],
-  appointments: Appointment[],
+  appointments: AvailabilityAppointment[],
   blockedSlots: BlockedSlot[],
   slotDuration: number = 30,
   serviceDuration: number = 30
@@ -44,6 +46,13 @@ export function generateTimeSlots(
     // Verificar si hay turno existente
     const hasAppointment = appointments.some(apt => {
       if (apt.status === 'cancelled') return false
+      if (
+        apt.status === 'pending_payment' &&
+        apt.expires_at &&
+        new Date(apt.expires_at).getTime() <= Date.now()
+      ) {
+        return false
+      }
       return timeStrFull >= apt.start_time && timeStrFull < apt.end_time
     })
 

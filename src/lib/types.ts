@@ -83,7 +83,7 @@ export interface ClientBarbershop {
   created_at: string
 }
 
-export type AppointmentStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+export type AppointmentStatus = 'pending' | 'pending_payment' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
 export type DepositStatus = 'none' | 'pending' | 'paid' | 'refunded'
 
 export interface Appointment {
@@ -105,6 +105,7 @@ export interface Appointment {
   cancelled_by: string | null
   created_at: string
   updated_at: string
+  expires_at: string | null
   // Joined fields
   barber?: Barber
   service?: Service
