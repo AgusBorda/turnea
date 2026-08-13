@@ -89,19 +89,28 @@ Objetivo: que el booking pueda conocer disponibilidad sin exponer datos de clien
 
 ---
 
-### ⏳ Ticket 5 — Evitar dobles reservas
+### ✅ Ticket 5 — Evitar dobles reservas
 
 Objetivo: garantizar desde backend/base de datos que dos clientes no puedan reservar el mismo horario.
 
-* [ ] Corregir detección de solapamientos
-* [ ] Validar disponibilidad en backend
-* [ ] Evitar condiciones de carrera
-* [ ] Implementar mecanismo atómico en PostgreSQL
-* [ ] Validar creación manual desde agenda
-* [ ] Validar creación desde booking
-* [ ] Crear pruebas de concurrencia
+- [x] Corregir detección de solapamientos
+- [x] Validar disponibilidad en backend
+- [x] Evitar condiciones de carrera
+- [x] Implementar mecanismo atómico en PostgreSQL
+- [x] Validar creación manual desde agenda
+- [x] Validar creación desde booking
+- [x] Crear y ejecutar pruebas de concurrencia
 
-**Estado:** ⏳ Pendiente
+**Validaciones realizadas:**
+- 10 reservas simultáneas sobre el mismo horario.
+- Resultado: 1 reserva creada y 9 rechazadas con `SLOT_CONFLICT`.
+- Confirmado en base de datos que sólo existe 1 appointment bloqueante activo.
+- Los `pending_payment` vencidos no bloquean horarios.
+- Los `confirmed` sí bloquean siempre.
+- Booking, Checkout y Agenda utilizan `create_appointment_atomic()`.
+- El webhook confirma pagos mediante `confirm_paid_appointment_atomic()` bajo el mismo lock por barbero.
+
+**Estado:** ✅ Completado
 
 ---
 
