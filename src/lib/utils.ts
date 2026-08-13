@@ -1,5 +1,5 @@
 import { format, addMinutes, parse, isBefore, isEqual } from 'date-fns'
-import { BarberSchedule, BlockedSlot, BusySlot, TimeSlot } from './types'
+import { BarberSchedule, BusySlot, PublicBlockedSlot, TimeSlot } from './types'
 
 /**
  * Genera los time slots disponibles para un barbero en una fecha dada
@@ -8,7 +8,7 @@ export function generateTimeSlots(
   date: Date,
   schedules: BarberSchedule[],
   busySlots: BusySlot[],
-  blockedSlots: BlockedSlot[],
+  blockedSlots: PublicBlockedSlot[],
   slotDuration: number = 30,
   serviceDuration: number = 30
 ): TimeSlot[] {

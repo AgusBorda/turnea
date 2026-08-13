@@ -123,6 +123,13 @@ export interface BlockedSlot {
   created_at: string
 }
 
+export interface PublicBlockedSlot {
+  date: string
+  start_time: string | null
+  end_time: string | null
+  all_day: boolean
+}
+
 export interface TimeSlot {
   time: string
   available: boolean
