@@ -32,7 +32,7 @@ Antes de sumar funcionalidades importantes, queremos asegurar que Turnea pueda m
 
 ---
 
-### ⏳ Ticket 2 — Proteger credenciales de Mercado Pago
+### ✅ Ticket 2 — Proteger credenciales de Mercado Pago
 
 Objetivo: evitar que `mp_access_token` pueda quedar expuesto públicamente.
 
@@ -46,9 +46,16 @@ Objetivo: evitar que `mp_access_token` pueda quedar expuesto públicamente.
 * [x] Probar en Supabase DEV
 * [x] Probar localhost
 * [x] Probar Vercel Preview
-* [ ] Eliminar columnas antiguas cuando la transición esté validada
+* [x] Eliminar columnas antiguas cuando la transición esté validada
 
-**Estado:** ⏳ Pendiente
+**Validaciones realizadas:**
+* `mp_access_token` y `mp_user_id` eliminados de `barbershops`.
+* Credenciales conservadas en `barbershop_payment_credentials`.
+* `mp_configured` continúa activo en las barberías configuradas.
+* Ningún flujo productivo depende de las columnas legacy.
+* Dashboard dejó de sobreleer datos de `barbershops`.
+
+**Estado:** ✅ Completado
 
 ---
 
