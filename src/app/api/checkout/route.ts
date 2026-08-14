@@ -38,6 +38,28 @@ function getAppUrl(req: NextRequest): string {
   return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 }
 
+function buildNotificationUrl(appUrl: string, barbershopId: string): {
+  url: string | null
+  error: string | null
+} {
+  const isLocalhost = appUrl.includes('localhost') || appUrl.includes('127.0.0.1')
+  if (isLocalhost) return { url: null, error: null }
+
+  const notificationUrl = new URL('/api/webhooks/mp', appUrl)
+  notificationUrl.searchParams.set('barbershop_id', barbershopId)
+
+  if (process.env.VERCEL_ENV === 'preview') {
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
+    if (!bypassSecret) {
+      return { url: null, error: 'Preview webhook bypass is not configured' }
+    }
+
+    notificationUrl.searchParams.set('x-vercel-protection-bypass', bypassSecret)
+  }
+
+  return { url: notificationUrl.toString(), error: null }
+}
+
 function isValidDate(value: string): boolean {
   if (!DATE_PATTERN.test(value)) return false
 
@@ -175,6 +197,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Monto de seña inválido' }, { status: 400 })
   }
 
+  const appUrl = getAppUrl(req)
+  let notificationUrlResult: ReturnType<typeof buildNotificationUrl>
+
+  try {
+    notificationUrlResult = buildNotificationUrl(appUrl, barbershopId)
+  } catch {
+    return NextResponse.json({ error: 'La URL pública de Checkout es inválida' }, { status: 500 })
+  }
+
+  if (notificationUrlResult.error) {
+    return NextResponse.json({ error: notificationUrlResult.error }, { status: 500 })
+  }
+
   let admin: ReturnType<typeof createAdminClient>
 
   try {
@@ -254,8 +289,6 @@ export async function POST(req: NextRequest) {
     return !error && Boolean(data)
   }
 
-  const appUrl = getAppUrl(req)
-  const isLocalhost = appUrl.includes('localhost') || appUrl.includes('127.0.0.1')
   const preferenceBody: Record<string, unknown> = {
     items: [
       {
@@ -270,9 +303,9 @@ export async function POST(req: NextRequest) {
       failure: `${appUrl}/${barbershop.slug}/cancel`,
       pending: `${appUrl}/${barbershop.slug}/success`,
     },
-    ...(!isLocalhost && {
+    ...(notificationUrlResult.url && {
       auto_return: 'approved',
-      notification_url: `${appUrl}/api/webhooks/mp?barbershop_id=${encodeURIComponent(barbershopId)}`,
+      notification_url: notificationUrlResult.url,
     }),
     external_reference: appointmentId,
     expires: true,
