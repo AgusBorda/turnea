@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { isLocalSlotInPast } from '@/lib/datetime'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const { data: barbershop, error: barbershopError } = await supabase
     .from('barbershops')
-    .select('id, slug, name, currency, deposit_required, deposit_percentage, mp_configured, active')
+    .select('id, slug, name, currency, timezone, deposit_required, deposit_percentage, mp_configured, active')
     .eq('id', barbershopId)
     .eq('active', true)
     .maybeSingle()
@@ -153,6 +154,14 @@ export async function POST(req: NextRequest) {
   }
 
   const normalizedStartTime = `${startTime.slice(0, 5)}:00`
+
+  if (isLocalSlotInPast(date, normalizedStartTime, barbershop.timezone)) {
+    return NextResponse.json(
+      { error: 'El horario del turno ya pasó', code: 'APPOINTMENT_IN_PAST' },
+      { status: 400 }
+    )
+  }
+
   const depositAmount = Math.round(servicePrice * depositPercentage) / 100
   const preferenceStartsAt = new Date()
   const expiresAt = new Date(preferenceStartsAt.getTime() + PENDING_PAYMENT_TTL_MS).toISOString()
@@ -203,6 +212,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'Ese horario acaba de ser reservado. ElegÃ­ otro disponible.' },
       { status: 409 }
+    )
+  }
+
+  if (appointmentError?.message.includes('APPOINTMENT_IN_PAST')) {
+    return NextResponse.json(
+      { error: 'El horario del turno ya pasó', code: 'APPOINTMENT_IN_PAST' },
+      { status: 400 }
     )
   }
 

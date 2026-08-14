@@ -1,9 +1,8 @@
 import { AlertCircle, Calendar, Check, Clock, MapPin, Phone } from 'lucide-react'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { formatLocalDate } from '@/lib/datetime'
 import { createClient } from '@/lib/supabase/server'
 import PaymentStatusPolling from './payment-status-polling'
 
@@ -174,7 +173,7 @@ function PendingCard({
         <div className="bg-white rounded-xl border border-gray-200 p-4 text-sm mb-4">
           <p className="font-medium">{appointment.service_name}</p>
           <p className="text-gray-500">
-            {format(new Date(`${appointment.date}T00:00:00`), "EEEE d 'de' MMMM", { locale: es })}
+            {formatLocalDate(appointment.date, { weekday: 'long', day: 'numeric', month: 'long' })}
             {' — '}
             {appointment.start_time.slice(0, 5)} hs
           </p>
@@ -208,7 +207,7 @@ function AppointmentDetails({
     <div className="space-y-3 text-sm">
       <InfoRow icon={<Calendar className="w-4 h-4" />} label="Fecha">
         <span className="font-medium capitalize">
-          {format(new Date(`${appointment.date}T00:00:00`), "EEEE d 'de' MMMM", { locale: es })}
+          {formatLocalDate(appointment.date, { weekday: 'long', day: 'numeric', month: 'long' })}
         </span>
       </InfoRow>
       <InfoRow icon={<Clock className="w-4 h-4" />} label="Horario">
