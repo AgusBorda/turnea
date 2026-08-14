@@ -196,16 +196,50 @@ Objetivo: garantizar desde backend/base de datos que dos clientes no puedan rese
 > Pendiente separado: definir conciliación/reembolso para el caso excepcional en que Mercado Pago acredite un pago después del vencimiento del turno.
 ---
 
-### ⏳ Ticket 7 — Fechas y timezone
+### ✅ Ticket 7 — Fechas y timezone
 
-* [ ] Usar timezone configurado por barbería
-* [ ] Evitar depender del timezone del navegador
-* [ ] Evitar depender del timezone de Vercel
-* [ ] Revisar fechas pasadas
-* [ ] Revisar horarios del día actual
-* [ ] Probar cambios de día y casos límite
+Objetivo: interpretar fechas y horarios civiles según el timezone IANA configurado por cada barbería, sin depender del navegador ni del timezone del servidor.
 
-**Estado:** ⏳ Pendiente
+* [x] Persistir y validar timezone IANA por barbería
+* [x] Configurar timezone desde Settings
+* [x] Usar timezone de barbería en Booking
+* [x] Usar timezone de barbería en Agenda
+* [x] Usar timezone de barbería en Dashboard
+* [x] Validar horarios pasados en Checkout y PostgreSQL
+* [x] Formatear fechas civiles de Success sin desplazamientos
+* [x] Actualizar Booking y Agenda al avanzar el reloj o cambiar el día
+* [x] Rechazar horas inexistentes por DST
+* [x] Rechazar horas ambiguas/repetidas por DST
+* [x] Rechazar intervalos cuya duración absoluta cambie por una transición DST
+* [x] Probar fechas pasadas, futuras, rollover, timezone distinto y DST
+* [x] Validar helper DST y create_appointment_atomic() en Supabase DEV
+
+**Política temporal:**
+* appointment.date, start_time y end_time son valores civiles de la barbería.
+* created_at, updated_at, expires_at, cancelled_at y timestamps de Mercado Pago son instantes absolutos.
+* Horas DST inexistentes o ambiguas se rechazan; el usuario debe elegir otro horario.
+* Los turnos que cruzan medianoche no están soportados actualmente.
+
+**Timezones ofrecidos en Settings:**
+* America/Argentina/Buenos_Aires
+* America/Montevideo
+* America/Santiago
+* America/Sao_Paulo
+* Europe/Madrid
+* America/Mexico_City
+
+La base de datos acepta cualquier identificador IANA válido, aunque Settings ofrece estos valores como presets.
+
+**Validaciones realizadas:**
+* Turno pasado rechazado desde Checkout y desde la RPC.
+* Turnos futuros de hoy y mañana aceptados.
+* Success mostró establemente jueves 13 de agosto para 2026-08-13.
+* Rollover y reloj vivo validados en Booking y Agenda.
+* DST_NONEXISTENT_TIME, DST_AMBIGUOUS_TIME y DST_TRANSITION_INTERVAL validados en DEV.
+* create_appointment_atomic() propagó correctamente los tres errores DST.
+* Build completado correctamente.
+
+**Estado:** ✅ Completado
 
 ---
 
@@ -298,7 +332,7 @@ master
 
 ## 📌 Ticket actual
 
-**Próximo:** Ticket 2 — Proteger credenciales de Mercado Pago.
+**Próximo:** Ticket 3 — Completar prueba de pagos en DEV.
 
 ---
 
