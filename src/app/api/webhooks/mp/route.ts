@@ -237,10 +237,6 @@ export async function POST(req: NextRequest) {
     return okResponse()
   }
 
-  if (!appointment.expires_at || new Date(appointment.expires_at).getTime() <= Date.now()) {
-    return okResponse()
-  }
-
   const { data: barbershop, error: barbershopError } = await admin
     .from('barbershops')
     .select('id, currency')
@@ -299,8 +295,31 @@ export async function POST(req: NextRequest) {
     return okResponse()
   }
 
-  const { data: confirmedAppointment, error: updateError } = await admin.rpc(
-    'confirm_paid_appointment_atomic',
+  const reconciliationAppointmentId = appointment.id
+  const reconciliationPreferenceId = appointment.mp_preference_id
+
+  async function registerReconciliation(
+    reason: 'appointment_expired' | 'confirmation_conflict'
+  ): Promise<boolean> {
+    const { data: reconciliationId, error: reconciliationError } = await admin.rpc(
+      'register_payment_reconciliation',
+      {
+        p_barbershop_id: barbershopId,
+        p_appointment_id: reconciliationAppointmentId,
+        p_mp_payment_id: verifiedPaymentId,
+        p_mp_preference_id: reconciliationPreferenceId,
+        p_amount: expectedAmount,
+        p_currency: expectedCurrency,
+        p_mp_payment_status: 'approved',
+        p_reason: reason,
+      }
+    )
+
+    return !reconciliationError && typeof reconciliationId === 'string' && UUID_PATTERN.test(reconciliationId)
+  }
+
+  const { data: confirmationResult, error: confirmationError } = await admin.rpc(
+    'confirm_paid_appointment_atomic_v2',
     {
       p_appointment_id: appointment.id,
       p_barbershop_id: barbershopId,
@@ -308,38 +327,37 @@ export async function POST(req: NextRequest) {
     }
   )
 
-  if (updateError) {
+  if (confirmationError) {
     return NextResponse.json({ error: 'No se pudo confirmar el turno' }, { status: 500 })
   }
 
-  if (!confirmedAppointment) {
-    const { data: currentAppointment, error: currentAppointmentError } = await admin
-      .from('appointments')
-      .select('status, deposit_status, expires_at, mp_payment_id')
-      .eq('id', appointment.id)
-      .maybeSingle()
-
-    if (currentAppointmentError) {
-      return NextResponse.json({ error: 'No se pudo verificar la confirmación' }, { status: 500 })
-    }
-
-    if (
-      currentAppointment?.status === 'pending_payment' &&
-      currentAppointment.deposit_status === 'pending' &&
-      currentAppointment.expires_at &&
-      new Date(currentAppointment.expires_at).getTime() <= Date.now()
-    ) {
-      return okResponse()
-    }
-
-    if (
-      currentAppointment?.status !== 'confirmed' ||
-      currentAppointment.deposit_status !== 'paid' ||
-      currentAppointment.mp_payment_id !== verifiedPaymentId
-    ) {
-      return NextResponse.json({ error: 'El turno no pudo confirmarse' }, { status: 409 })
-    }
+  if (confirmationResult === 'confirmed' || confirmationResult === 'already_confirmed') {
+    return okResponse()
   }
 
-  return okResponse()
+  const reconciliationReason = confirmationResult === 'appointment_expired'
+    ? 'appointment_expired'
+    : confirmationResult === 'slot_conflict'
+      ? 'confirmation_conflict'
+      : null
+
+  if (reconciliationReason) {
+    const reconciliationRegistered = await registerReconciliation(reconciliationReason)
+
+    if (!reconciliationRegistered) {
+      return NextResponse.json({ error: 'No se pudo registrar la conciliación' }, { status: 500 })
+    }
+
+    return okResponse()
+  }
+
+  if (
+    confirmationResult === 'invalid_state' ||
+    confirmationResult === 'payment_conflict' ||
+    confirmationResult === 'not_found'
+  ) {
+    return NextResponse.json({ error: 'El turno no pudo confirmarse' }, { status: 409 })
+  }
+
+  return NextResponse.json({ error: 'Respuesta de confirmación inválida' }, { status: 500 })
 }
