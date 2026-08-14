@@ -5,6 +5,7 @@ import { Barber, Service } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { Plus, X, Check, Ban, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatPrice } from '@/lib/utils'
+import { useMinuteNow } from '@/hooks/use-minute-now'
 import {
   addCalendarDays,
   addCalendarMonths,
@@ -94,14 +95,15 @@ function statusLabel(status: string) {
   return map[status] || status
 }
 
-function DayView({ appointments, date, timezone, onSelect }: {
+function DayView({ appointments, date, timezone, now, onSelect }: {
   appointments: AppointmentData[]
   date: LocalDate
   timezone: string
+  now: Date | null
   onSelect: (apt: AppointmentData) => void
 }) {
-  const isCurrentDay = isLocalDateToday(date, timezone)
-  const currentMin = getBarbershopCurrentMinutes(timezone)
+  const isCurrentDay = now ? isLocalDateToday(date, timezone, now) : false
+  const currentMin = now ? getBarbershopCurrentMinutes(timezone, now) : null
   const startMin = DAY_START * 60
   const totalHours = DAY_END - DAY_START
   const dayApts = appointments.filter(
@@ -143,7 +145,7 @@ function DayView({ appointments, date, timezone, onSelect }: {
             {Array.from({ length: totalHours }, (_, i) => (
               <div key={`h${i}`} className="absolute left-0 right-0 border-t border-gray-50" style={{ top: `${(i + 0.5) * HOUR_PX}px` }} />
             ))}
-            {isCurrentDay && currentMin >= startMin && currentMin < DAY_END * 60 && (
+            {isCurrentDay && currentMin !== null && currentMin >= startMin && currentMin < DAY_END * 60 && (
               <div className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
                 style={{ top: `${((currentMin - startMin) / 60) * HOUR_PX}px` }}>
                 <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0 -ml-1" />
@@ -177,10 +179,11 @@ function DayView({ appointments, date, timezone, onSelect }: {
   )
 }
 
-function WeekView({ appointments, currentDate, timezone, onSelect, onDayClick }: {
+function WeekView({ appointments, currentDate, timezone, now, onSelect, onDayClick }: {
   appointments: AppointmentData[]
   currentDate: LocalDate
   timezone: string
+  now: Date | null
   onSelect: (apt: AppointmentData) => void
   onDayClick: (d: LocalDate) => void
 }) {
@@ -192,7 +195,7 @@ function WeekView({ appointments, currentDate, timezone, onSelect, onDayClick }:
         {days.map(day => {
           const dateStr = day
           const dayApts = appointments.filter(a => a.date === dateStr && a.status !== 'cancelled')
-          const isCurrentDay = isLocalDateToday(day, timezone)
+          const isCurrentDay = now ? isLocalDateToday(day, timezone, now) : false
           return (
             <div key={dateStr} className={`bg-white rounded-xl border min-h-[160px] ${isCurrentDay ? 'border-purple-400 ring-1 ring-purple-200/50' : 'border-[var(--border)]'}`}>
               <button onClick={() => onDayClick(day)}
@@ -232,10 +235,11 @@ function WeekView({ appointments, currentDate, timezone, onSelect, onDayClick }:
   )
 }
 
-function MonthView({ appointments, currentDate, timezone, onDayClick }: {
+function MonthView({ appointments, currentDate, timezone, now, onDayClick }: {
   appointments: AppointmentData[]
   currentDate: LocalDate
   timezone: string
+  now: Date | null
   onDayClick: (d: LocalDate) => void
 }) {
   const monthStart = getMonthStartLocalDate(currentDate)
@@ -259,7 +263,7 @@ function MonthView({ appointments, currentDate, timezone, onDayClick }: {
           const dateStr = day
           const dayApts = appointments.filter(a => a.date === dateStr && a.status !== 'cancelled')
           const inMonth = day.slice(0, 7) === currentDate.slice(0, 7)
-          const isCurrentDay = isLocalDateToday(day, timezone)
+          const isCurrentDay = now ? isLocalDateToday(day, timezone, now) : false
           const dow = getLocalDateDayOfWeek(day)
           const isWeekend = dow === 0 || dow === 6
           return (
@@ -287,6 +291,7 @@ function MonthView({ appointments, currentDate, timezone, onDayClick }: {
 }
 
 export default function AgendaClient({ barbershopId, timezone, barbers, services }: Props) {
+  const now = useMinuteNow()
   const [view, setView] = useState<View>('day')
   const [currentDate, setCurrentDate] = useState<LocalDate>(() => getBarbershopToday(timezone))
   const [appointments, setAppointments] = useState<AppointmentData[]>([])
@@ -330,7 +335,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
     else setCurrentDate(d => addCalendarMonths(d, dir))
   }
 
-  function goToday() { setCurrentDate(getBarbershopToday(timezone)) }
+  function goToday() { setCurrentDate(getBarbershopToday(timezone, now ?? new Date())) }
 
   function getNavLabel() {
     if (view === 'day') return formatLocalDate(currentDate, { weekday: 'long', day: 'numeric', month: 'long' })
@@ -413,14 +418,14 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
         <span className="font-semibold capitalize text-gray-800 flex-1 ml-1">{getNavLabel()}</span>
         {loadingData && <span className="text-xs text-[var(--muted)] animate-pulse">Cargando...</span>}
         <button onClick={goToday}
-          className={`px-3 py-1.5 text-sm border rounded-lg font-medium transition-colors ${isLocalDateToday(currentDate, timezone) && view === 'day' ? 'border-purple-300 text-purple-600 bg-purple-50' : 'border-[var(--border)] text-gray-600 hover:bg-gray-50'}`}>
+          className={`px-3 py-1.5 text-sm border rounded-lg font-medium transition-colors ${now && isLocalDateToday(currentDate, timezone, now) && view === 'day' ? 'border-purple-300 text-purple-600 bg-purple-50' : 'border-[var(--border)] text-gray-600 hover:bg-gray-50'}`}>
           Hoy
         </button>
       </div>
 
-      {view === 'day' && <DayView appointments={appointments} date={currentDate} timezone={timezone} onSelect={setSelectedApt} />}
-      {view === 'week' && <WeekView appointments={appointments} currentDate={currentDate} timezone={timezone} onSelect={setSelectedApt} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
-      {view === 'month' && <MonthView appointments={appointments} currentDate={currentDate} timezone={timezone} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
+      {view === 'day' && <DayView appointments={appointments} date={currentDate} timezone={timezone} now={now} onSelect={setSelectedApt} />}
+      {view === 'week' && <WeekView appointments={appointments} currentDate={currentDate} timezone={timezone} now={now} onSelect={setSelectedApt} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
+      {view === 'month' && <MonthView appointments={appointments} currentDate={currentDate} timezone={timezone} now={now} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
 
       {showNewForm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">

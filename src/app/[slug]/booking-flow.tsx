@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Barbershop, Barber, Service, TimeSlot } from '@/lib/types'
 import { formatPrice, formatDuration } from '@/lib/utils'
 import {
   addCalendarDays,
   formatLocalDate,
   getBarbershopToday,
+  isLocalSlotInPast,
   LocalDate,
 } from '@/lib/datetime'
+import { useMinuteNow } from '@/hooks/use-minute-now'
 import { createClient } from '@/lib/supabase/client'
 import { Check, ChevronLeft, Clock, User, Scissors, Calendar, CreditCard, Wallet } from 'lucide-react'
 
@@ -39,8 +41,47 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
+  const synchronizeSelection = useCallback((currentNow: Date) => {
+    if (!selectedDate) return
+
+    const currentToday = getBarbershopToday(barbershop.timezone, currentNow)
+    if (selectedDate < currentToday) {
+      setSelectedDate(currentToday)
+      setSelectedTime(null)
+      setTimeSlots([])
+      setStep('date')
+      setError('El día seleccionado ya pasó. Elegí una nueva fecha.')
+      return
+    }
+
+    if (
+      selectedTime
+      && isLocalSlotInPast(
+        selectedDate,
+        `${selectedTime}:00`,
+        barbershop.timezone,
+        currentNow
+      )
+    ) {
+      setSelectedTime(null)
+      setStep('time')
+      setError('El horario seleccionado ya pasó. Elegí otro disponible.')
+    }
+  }, [barbershop.timezone, selectedDate, selectedTime])
+
+  const now = useMinuteNow(synchronizeSelection)
+
   const steps: Step[] = ['service', 'barber', 'date', 'time', 'confirm']
   const currentIndex = steps.indexOf(step)
+  const today = now ? getBarbershopToday(barbershop.timezone, now) : null
+  const visibleTimeSlots = selectedDate && now
+    ? timeSlots.filter(slot => !isLocalSlotInPast(
+        selectedDate,
+        `${slot.time}:00`,
+        barbershop.timezone,
+        now
+      ))
+    : timeSlots
 
   function goBack() {
     if (currentIndex > 0) {
@@ -328,8 +369,8 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             Elegí un día
           </h2>
           <div className="grid grid-cols-3 gap-2">
-            {Array.from({ length: barbershop.advance_booking_days }, (_, i) => {
-              const date = addCalendarDays(getBarbershopToday(barbershop.timezone), i)
+            {today && Array.from({ length: barbershop.advance_booking_days }, (_, i) => {
+              const date = addCalendarDays(today, i)
               return (
                 <button
                   key={date}
@@ -366,7 +407,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
               weekday: 'long', day: 'numeric', month: 'long',
             })}
           </p>
-          {timeSlots.length === 0 ? (
+          {visibleTimeSlots.length === 0 ? (
             <div className="bg-white rounded-xl p-6 text-center border border-[var(--border)]">
               <p className="text-[var(--muted)]">No hay horarios disponibles este día.</p>
               <button
@@ -378,7 +419,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-2">
-              {timeSlots.map(slot => (
+              {visibleTimeSlots.map(slot => (
                 <button
                   key={slot.time}
                   onClick={() => slot.available && selectTime(slot.time)}
