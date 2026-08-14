@@ -27,20 +27,6 @@ interface MercadoPagoMerchantOrder {
   preference_id?: unknown
 }
 
-interface SignatureValidationResult {
-  valid: boolean
-  diagnostics: {
-    hasDataIdQuery: boolean
-    hasRequestId: boolean
-    hasSignature: boolean
-    hasTimestamp: boolean
-    hasV1Hash: boolean
-    signatureLength: number
-    manifest: string
-    queryParamNames: string[]
-  }
-}
-
 function okResponse() {
   return NextResponse.json({ ok: true })
 }
@@ -69,7 +55,7 @@ function isMerchantOrder(value: unknown): value is MercadoPagoMerchantOrder {
   return typeof value === 'object' && value !== null
 }
 
-function validateWebhookSignature(req: NextRequest, secret: string): SignatureValidationResult {
+function validateWebhookSignature(req: NextRequest, secret: string): boolean {
   const xSignature = req.headers.get('x-signature')
   let timestamp = ''
   let receivedHash = ''
@@ -93,28 +79,14 @@ function validateWebhookSignature(req: NextRequest, secret: string): SignatureVa
     timestamp ? `ts:${timestamp};` : '',
   ].join('')
 
-  const diagnostics = {
-    hasDataIdQuery: Boolean(dataId),
-    hasRequestId: Boolean(requestId),
-    hasSignature: Boolean(xSignature),
-    hasTimestamp: Boolean(timestamp),
-    hasV1Hash: /^[0-9a-f]{64}$/.test(receivedHash),
-    signatureLength: xSignature?.length || 0,
-    manifest,
-    queryParamNames: [...new Set(req.nextUrl.searchParams.keys())].sort(),
-  }
-
-  if (!diagnostics.hasV1Hash) {
-    return { valid: false, diagnostics }
+  if (!/^[0-9a-f]{64}$/.test(receivedHash)) {
+    return false
   }
 
   const expectedHash = createHmac('sha256', secret).update(manifest).digest()
   const receivedHashBuffer = Buffer.from(receivedHash, 'hex')
 
-  return {
-    valid: receivedHashBuffer.length === expectedHash.length && timingSafeEqual(receivedHashBuffer, expectedHash),
-    diagnostics,
-  }
+  return receivedHashBuffer.length === expectedHash.length && timingSafeEqual(receivedHashBuffer, expectedHash)
 }
 
 export async function POST(req: NextRequest) {
@@ -152,23 +124,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Webhook no configurado' }, { status: 500 })
   }
 
-  const signatureValidation = validateWebhookSignature(req, webhookSecret)
-  if (!signatureValidation.valid) {
-    const diagnostics = signatureValidation.diagnostics
-
-    console.warn('[mp-webhook] invalid signature components', {
-      hasXSignature: diagnostics.hasSignature,
-      hasXRequestId: diagnostics.hasRequestId,
-      hasDataId: diagnostics.hasDataIdQuery,
-      hasTimestamp: diagnostics.hasTimestamp,
-      hasV1Hash: diagnostics.hasV1Hash,
-      manifestPartsCount: [
-        diagnostics.hasDataIdQuery,
-        diagnostics.hasRequestId,
-        diagnostics.hasTimestamp,
-      ].filter(Boolean).length,
-    })
-
+  if (!validateWebhookSignature(req, webhookSecret)) {
     return NextResponse.json({ error: 'Firma inválida' }, { status: 401 })
   }
 

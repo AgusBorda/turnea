@@ -59,7 +59,7 @@ Objetivo: evitar que `mp_access_token` pueda quedar expuesto públicamente.
 
 ---
 
-### ⏳ Ticket 3 — Flujo de pagos confiable
+### ✅ Ticket 3 — Flujo de pagos confiable
 
 Objetivo: que Mercado Pago sea seguro y consistente incluso si el cliente cierra la página o manipula redirects.
 
@@ -72,9 +72,23 @@ Objetivo: que Mercado Pago sea seguro y consistente incluso si el cliente cierra
 * [x] Verificar errores de Supabase
 * [x] Evitar que `/success` confirme pagos por sí solo
 * [x] Revisar flujo `/cancel`
-* [ ] Probar pagos correctamente en DEV
+* [x] Probar pagos correctamente en DEV
 
-**Estado:** ⏳ Pendiente
+**Validaciones realizadas:**
+* Checkout obtiene desde la base de datos el monto, la duración y la configuración necesaria, sin confiar en importes enviados por el navegador.
+* Los turnos con seña se crean como `pending_payment`, con `expires_at`, y la preference de Mercado Pago usa la misma expiración.
+* La `notification_url` solicita Webhooks mediante `source_news=webhooks` y funciona en Vercel Preview con Protection Bypass server-only.
+* Las IPN legacy `merchant_order` se acknowledgean con HTTP 200 sin lecturas, escrituras ni confirmaciones.
+* Los Webhooks `payment` mantienen validación HMAC obligatoria.
+* El webhook consulta el payment oficial y valida `external_reference`, barbería, monto, moneda y preference mediante merchant order.
+* La confirmación usa `confirm_paid_appointment_atomic()` y el procesamiento es idempotente.
+* Success es de sólo lectura y refleja la confirmación mediante polling seguro.
+* Los `pending_payment` vencidos se liberan y expiran; un pago tardío no confirma el turno y queda pendiente de conciliación en Ticket 8.
+* El flujo TEST fue validado en DEV mediante el simulador oficial y un payment TEST real recién creado.
+
+> Producción todavía no fue desplegada ni probada. Esa validación corresponde al proceso de salida a producción.
+
+**Estado:** ✅ Completado
 
 ---
 
@@ -332,7 +346,7 @@ master
 
 ## 📌 Ticket actual
 
-**Próximo:** Ticket 3 — Completar prueba de pagos en DEV.
+**Próximo:** Ticket 8 — Pagos tardíos y conciliación.
 
 ---
 
