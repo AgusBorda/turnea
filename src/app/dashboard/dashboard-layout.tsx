@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Barbershop } from '@/lib/types'
 import {
   LayoutDashboard,
   Calendar,
@@ -18,7 +17,7 @@ import {
 import { useState } from 'react'
 
 interface Props {
-  barbershop: Barbershop | null
+  barbershop: { id: string; name: string } | null
   userEmail: string
   children: React.ReactNode
 }

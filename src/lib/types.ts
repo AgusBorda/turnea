@@ -18,7 +18,7 @@ export interface Barbershop {
   slot_duration: number
   advance_booking_days: number
   cancellation_hours: number
-  mp_access_token: string | null
+  mp_configured: boolean
   active: boolean
   created_at: string
   updated_at: string

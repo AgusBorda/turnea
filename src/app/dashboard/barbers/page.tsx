@@ -9,7 +9,7 @@ export default async function BarbersPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('*')
+    .select('id')
     .eq('owner_id', user.id)
     .single()
 
