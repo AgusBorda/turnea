@@ -5,6 +5,16 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { ExternalLink } from 'lucide-react'
 
+const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
+const TIMEZONE_OPTIONS = [
+  { value: DEFAULT_TIMEZONE, label: 'Buenos Aires (Argentina)' },
+  { value: 'America/Montevideo', label: 'Montevideo (Uruguay)' },
+  { value: 'America/Santiago', label: 'Santiago (Chile)' },
+  { value: 'America/Sao_Paulo', label: 'São Paulo (Brasil)' },
+  { value: 'Europe/Madrid', label: 'Madrid (España)' },
+  { value: 'America/Mexico_City', label: 'Ciudad de México (México)' },
+] as const
+
 interface SettingsBarbershop {
   id: string
   name: string
@@ -13,6 +23,7 @@ interface SettingsBarbershop {
   address: string | null
   phone: string | null
   instagram: string | null
+  timezone: string
   slot_duration: number
   deposit_required: boolean
   deposit_percentage: number
@@ -32,6 +43,10 @@ export default function SettingsForm({ barbershop, userId }: Props) {
   const [address, setAddress] = useState(barbershop?.address || '')
   const [phone, setPhone] = useState(barbershop?.phone || '')
   const [instagram, setInstagram] = useState(barbershop?.instagram || '')
+  const [timezone, setTimezone] = useState(barbershop?.timezone || DEFAULT_TIMEZONE)
+  const [persistedTimezone, setPersistedTimezone] = useState(
+    barbershop?.timezone || DEFAULT_TIMEZONE
+  )
   const [slotDuration, setSlotDuration] = useState(barbershop?.slot_duration || 30)
   const [depositRequired, setDepositRequired] = useState(barbershop?.deposit_required || false)
   const [depositPercentage, setDepositPercentage] = useState(barbershop?.deposit_percentage || 50)
@@ -88,6 +103,7 @@ export default function SettingsForm({ barbershop, userId }: Props) {
       address: address.trim() || null,
       phone: phone.trim() || null,
       instagram: instagram.trim() || null,
+      timezone,
       slot_duration: slotDuration,
       deposit_required: depositRequired,
       deposit_percentage: depositPercentage,
@@ -102,8 +118,16 @@ export default function SettingsForm({ barbershop, userId }: Props) {
         .eq('id', barbershop.id)
 
       if (err) {
-        setError(err.message.includes('unique') ? 'Ese slug ya está en uso.' : err.message)
+        setTimezone(persistedTimezone)
+        setError(
+          err.message.includes('INVALID_BARBERSHOP_TIMEZONE')
+            ? 'La zona horaria seleccionada no es válida.'
+            : err.message.includes('unique')
+              ? 'Ese slug ya está en uso.'
+              : err.message
+        )
       } else {
+        setPersistedTimezone(timezone)
         try {
           if (accessToken) {
             await saveMercadoPagoCredential(barbershop.id, accessToken)
@@ -124,7 +148,13 @@ export default function SettingsForm({ barbershop, userId }: Props) {
         .single()
 
       if (err) {
-        setError(err.message.includes('unique') ? 'Ese slug ya está en uso.' : err.message)
+        setError(
+          err.message.includes('INVALID_BARBERSHOP_TIMEZONE')
+            ? 'La zona horaria seleccionada no es válida.'
+            : err.message.includes('unique')
+              ? 'Ese slug ya está en uso.'
+              : err.message
+        )
       } else {
         try {
           if (accessToken) {
@@ -236,6 +266,30 @@ export default function SettingsForm({ barbershop, userId }: Props) {
 
       <div className="bg-white rounded-xl border border-[var(--border)] p-6 space-y-4">
         <h2 className="font-semibold">Configuración de turnos</h2>
+
+        <div>
+          <label className="block text-sm font-medium mb-1" htmlFor="timezone">
+            Zona horaria
+          </label>
+          <select
+            id="timezone"
+            value={timezone}
+            onChange={e => setTimezone(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] bg-white"
+          >
+            {!TIMEZONE_OPTIONS.some(option => option.value === timezone) && (
+              <option value={timezone}>{timezone} (actual)</option>
+            )}
+            {TIMEZONE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-[var(--muted)] mt-1">
+            Se usa para calcular el día y los horarios disponibles de la barbería.
+          </p>
+        </div>
 
         <div>
           <label className="block text-sm font-medium mb-1">Duración del slot (minutos)</label>

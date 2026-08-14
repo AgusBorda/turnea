@@ -17,6 +17,7 @@ export default async function SettingsPage() {
       address,
       phone,
       instagram,
+      timezone,
       slot_duration,
       deposit_required,
       deposit_percentage,
