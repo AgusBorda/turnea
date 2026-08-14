@@ -126,6 +126,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Solicitud inválida' }, { status: 400 })
   }
 
+  const bodyType = typeof body.type === 'string' ? body.type : ''
+  const queryType = req.nextUrl.searchParams.get('type') || ''
+  const bodyTopic = typeof body.topic === 'string' ? body.topic : ''
+  const queryTopic = req.nextUrl.searchParams.get('topic') || ''
+  const hasModernPaymentDataId = Boolean(
+    req.nextUrl.searchParams.get('data.id') || body.data?.id
+  )
+  const isLegacyMerchantOrderIpn = (
+    !bodyType &&
+    !queryType &&
+    !hasModernPaymentDataId &&
+    (bodyTopic === 'merchant_order' || queryTopic === 'merchant_order')
+  )
+
+  // Legacy IPN uses topic=merchant_order and id=merchantOrderId. It is
+  // acknowledged only to stop retries and is never a source of payment truth.
+  // Modern Webhooks use type=payment and data.id=paymentId, and remain signed.
+  if (isLegacyMerchantOrderIpn) {
+    return okResponse()
+  }
+
   const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim()
   if (!webhookSecret) {
     return NextResponse.json({ error: 'Webhook no configurado' }, { status: 500 })
@@ -136,11 +157,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Firma inválida' }, { status: 401 })
   }
 
-  const notificationType = typeof body.type === 'string'
-    ? body.type
+  const notificationType = bodyType
+    ? bodyType
     : typeof body.topic === 'string'
       ? body.topic
-      : req.nextUrl.searchParams.get('type') || req.nextUrl.searchParams.get('topic') || ''
+      : queryType || queryTopic
 
   if (notificationType !== 'payment') {
     return okResponse()

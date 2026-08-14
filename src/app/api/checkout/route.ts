@@ -47,6 +47,7 @@ function buildNotificationUrl(appUrl: string, barbershopId: string): {
 
   const notificationUrl = new URL('/api/webhooks/mp', appUrl)
   notificationUrl.searchParams.set('barbershop_id', barbershopId)
+  notificationUrl.searchParams.set('source_news', 'webhooks')
 
   if (process.env.VERCEL_ENV === 'preview') {
     const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
