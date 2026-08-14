@@ -8,6 +8,11 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d(?::00)?$/
 const PENDING_PAYMENT_TTL_MS = 15 * 60 * 1000
+const DST_ERROR_CODES = [
+  'DST_NONEXISTENT_TIME',
+  'DST_AMBIGUOUS_TIME',
+  'DST_TRANSITION_INTERVAL',
+] as const
 
 interface CheckoutRequest {
   barbershop_id?: unknown
@@ -218,6 +223,17 @@ export async function POST(req: NextRequest) {
   if (appointmentError?.message.includes('APPOINTMENT_IN_PAST')) {
     return NextResponse.json(
       { error: 'El horario del turno ya pasó', code: 'APPOINTMENT_IN_PAST' },
+      { status: 400 }
+    )
+  }
+
+  const dstErrorCode = DST_ERROR_CODES.find(code => appointmentError?.message.includes(code))
+  if (dstErrorCode) {
+    return NextResponse.json(
+      {
+        error: 'Ese horario no está disponible por un cambio de hora. Elegí otro horario.',
+        code: dstErrorCode,
+      },
       { status: 400 }
     )
   }

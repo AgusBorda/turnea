@@ -364,6 +364,8 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
     })
     if (error?.message.includes('SLOT_')) {
       window.alert('Ese horario acaba de ser reservado. ElegÃ­ otro disponible.')
+    } else if (error?.message.includes('DST_')) {
+      window.alert('Ese horario no está disponible por un cambio de hora. Elegí otro horario.')
     } else if (error) {
       window.alert('No se pudo crear el turno. RevisÃ¡ los datos e intentÃ¡ nuevamente.')
     } else if (!error) {

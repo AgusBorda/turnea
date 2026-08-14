@@ -228,6 +228,10 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         throw new Error('Ese horario acaba de ser reservado. ElegÃ­ otro disponible.')
       }
 
+      if (aptError?.message.includes('DST_')) {
+        throw new Error('Ese horario no está disponible por un cambio de hora. Elegí otro horario.')
+      }
+
       if (aptError) throw aptError
 
       setSuccess(true)
