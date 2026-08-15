@@ -11,6 +11,8 @@ const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
 export interface BlockedSlotActionState {
   success: boolean
   message: string
+  feedback: 'inline' | 'toast'
+  tone: 'success' | 'error' | 'warning'
 }
 
 function getString(formData: FormData, field: string): string {
@@ -18,35 +20,55 @@ function getString(formData: FormData, field: string): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function mapBlockedSlotError(message: string): string {
+function mapBlockedSlotError(message: string): Pick<BlockedSlotActionState, 'message' | 'tone'> {
   if (message.includes('BLOCKED_SLOT_OVERLAP')) {
-    return 'Ya existe un bloqueo en ese horario.'
+    return { message: 'Ya existe un bloqueo en ese horario.', tone: 'warning' }
   }
   if (message.includes('BLOCK_CONFLICTS_WITH_APPOINTMENTS')) {
-    return 'No podés bloquear este horario porque ya existen turnos reservados.'
+    return {
+      message: 'No podés bloquear este horario porque ya existen turnos reservados.',
+      tone: 'error',
+    }
   }
   if (message.includes('BLOCKED_SLOT_IN_PAST')) {
-    return 'No podés bloquear una fecha pasada.'
+    return { message: 'No podés bloquear una fecha pasada.', tone: 'error' }
   }
   if (message.includes('VACATION_RANGE_TOO_LARGE')) {
-    return 'El período de vacaciones supera el máximo permitido.'
+    return { message: 'El período de vacaciones supera el máximo permitido.', tone: 'error' }
   }
   if (message.includes('VACATION_RANGE_INVALID')) {
-    return 'El rango de vacaciones no es válido.'
+    return { message: 'El rango de vacaciones no es válido.', tone: 'error' }
   }
   if (message.includes('BLOCKED_SLOT_INVALID_RANGE')) {
-    return 'El rango horario no es válido.'
+    return { message: 'El rango horario no es válido.', tone: 'error' }
   }
   if (message.includes('BLOCKED_SLOT_INVALID_REASON')) {
-    return 'El motivo es demasiado largo.'
+    return { message: 'El motivo es demasiado largo.', tone: 'error' }
   }
   if (message.includes('BARBER_NOT_FOUND_OR_NOT_OWNED')) {
-    return 'No se encontró el barbero.'
+    return { message: 'No se encontró el barbero.', tone: 'error' }
   }
   if (message.includes('BLOCKED_SLOT_NOT_FOUND_OR_NOT_OWNED')) {
-    return 'El bloqueo ya no existe o no está disponible.'
+    return { message: 'El bloqueo ya no existe o no está disponible.', tone: 'error' }
   }
-  return 'No se pudo completar la acción. Intentá nuevamente.'
+  return { message: 'No se pudo completar la acción. Intentá nuevamente.', tone: 'error' }
+}
+
+function inlineError(message: string): BlockedSlotActionState {
+  return { success: false, message, feedback: 'inline', tone: 'error' }
+}
+
+function toastResult(
+  success: boolean,
+  message: string,
+  tone: BlockedSlotActionState['tone']
+): BlockedSlotActionState {
+  return { success, message, feedback: 'toast', tone }
+}
+
+function mappedToastError(message: string): BlockedSlotActionState {
+  const mapped = mapBlockedSlotError(message)
+  return toastResult(false, mapped.message, mapped.tone)
 }
 
 async function getAuthenticatedClient() {
@@ -69,11 +91,11 @@ export async function createFullDayBlock(
   const reason = getString(formData, 'reason')
 
   if (!UUID_PATTERN.test(barberId) || !DATE_PATTERN.test(date)) {
-    return { success: false, message: 'Elegí una fecha válida.' }
+    return inlineError('Elegí una fecha válida.')
   }
 
   const { supabase, user } = await getAuthenticatedClient()
-  if (!user) return { success: false, message: 'Tu sesión venció. Volvé a iniciar sesión.' }
+  if (!user) return toastResult(false, 'Tu sesión venció. Volvé a iniciar sesión.', 'error')
 
   const { error } = await supabase.rpc('create_barber_blocked_slot', {
     p_barber_id: barberId,
@@ -84,9 +106,9 @@ export async function createFullDayBlock(
     p_reason: reason || null,
   })
 
-  if (error) return { success: false, message: mapBlockedSlotError(error.message) }
+  if (error) return mappedToastError(error.message)
   revalidateSchedule(barberId)
-  return { success: true, message: 'Día completo bloqueado.' }
+  return toastResult(true, 'Bloqueo agregado', 'success')
 }
 
 export async function createPartialBlock(
@@ -107,11 +129,11 @@ export async function createPartialBlock(
     || !TIME_PATTERN.test(endTime)
     || startTime >= endTime
   ) {
-    return { success: false, message: 'Elegí una fecha y una franja horaria válidas.' }
+    return inlineError('Elegí una fecha y una franja horaria válidas.')
   }
 
   const { supabase, user } = await getAuthenticatedClient()
-  if (!user) return { success: false, message: 'Tu sesión venció. Volvé a iniciar sesión.' }
+  if (!user) return toastResult(false, 'Tu sesión venció. Volvé a iniciar sesión.', 'error')
 
   const { error } = await supabase.rpc('create_barber_blocked_slot', {
     p_barber_id: barberId,
@@ -122,9 +144,9 @@ export async function createPartialBlock(
     p_reason: reason || null,
   })
 
-  if (error) return { success: false, message: mapBlockedSlotError(error.message) }
+  if (error) return mappedToastError(error.message)
   revalidateSchedule(barberId)
-  return { success: true, message: 'Franja horaria bloqueada.' }
+  return toastResult(true, 'Bloqueo agregado', 'success')
 }
 
 export async function createVacation(
@@ -143,25 +165,22 @@ export async function createVacation(
     || !DATE_PATTERN.test(dateTo)
     || dateTo < dateFrom
   ) {
-    return { success: false, message: 'Elegí un rango de vacaciones válido.' }
+    return inlineError('Elegí un rango de vacaciones válido.')
   }
 
   const { supabase, user } = await getAuthenticatedClient()
-  if (!user) return { success: false, message: 'Tu sesión venció. Volvé a iniciar sesión.' }
+  if (!user) return toastResult(false, 'Tu sesión venció. Volvé a iniciar sesión.', 'error')
 
-  const { data, error } = await supabase.rpc('create_barber_vacation', {
+  const { error } = await supabase.rpc('create_barber_vacation', {
     p_barber_id: barberId,
     p_date_from: dateFrom,
     p_date_to: dateTo,
     p_reason: reason || null,
   })
 
-  if (error) return { success: false, message: mapBlockedSlotError(error.message) }
+  if (error) return mappedToastError(error.message)
   revalidateSchedule(barberId)
-  return {
-    success: true,
-    message: `Vacaciones cargadas: ${Number(data) || 0} día(s) bloqueado(s).`,
-  }
+  return toastResult(true, 'Vacaciones cargadas', 'success')
 }
 
 export async function deleteBlockedSlot(
@@ -171,19 +190,19 @@ export async function deleteBlockedSlot(
 ): Promise<BlockedSlotActionState> {
   void _previousState
   if (!UUID_PATTERN.test(barberId) || !UUID_PATTERN.test(blockedSlotId)) {
-    return { success: false, message: 'El bloqueo no es válido.' }
+    return toastResult(false, 'El bloqueo no es válido.', 'error')
   }
 
   const { supabase, user } = await getAuthenticatedClient()
-  if (!user) return { success: false, message: 'Tu sesión venció. Volvé a iniciar sesión.' }
+  if (!user) return toastResult(false, 'Tu sesión venció. Volvé a iniciar sesión.', 'error')
 
   const { data, error } = await supabase.rpc('delete_barber_blocked_slot', {
     p_blocked_slot_id: blockedSlotId,
   })
 
-  if (error) return { success: false, message: mapBlockedSlotError(error.message) }
-  if (data !== true) return { success: false, message: 'No se pudo eliminar el bloqueo.' }
+  if (error) return mappedToastError(error.message)
+  if (data !== true) return toastResult(false, 'No se pudo eliminar el bloqueo.', 'error')
 
   revalidateSchedule(barberId)
-  return { success: true, message: 'Bloqueo eliminado.' }
+  return toastResult(true, 'Bloqueo eliminado', 'success')
 }

@@ -1,8 +1,9 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useCallback, useEffect, useState, useTransition } from 'react'
 import { CalendarOff, Clock3, Palmtree, Trash2 } from 'lucide-react'
 
+import { ToastViewport, useToast, type ToastTone } from '@/components/ui/toast'
 import { formatLocalDate } from '@/lib/datetime'
 import {
   createFullDayBlock,
@@ -29,11 +30,16 @@ interface Props {
 
 type FormMode = 'full-day' | 'partial' | 'vacation'
 
-const INITIAL_STATE: BlockedSlotActionState = { success: false, message: '' }
+const INITIAL_STATE: BlockedSlotActionState = {
+  success: false,
+  message: '',
+  feedback: 'inline',
+  tone: 'error',
+}
 const INPUT_CLASS = 'w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none'
 
 function Feedback({ state }: { state: BlockedSlotActionState }) {
-  if (!state.message) return null
+  if (!state.message || state.feedback !== 'inline') return null
   return (
     <p
       aria-live="polite"
@@ -44,43 +50,162 @@ function Feedback({ state }: { state: BlockedSlotActionState }) {
   )
 }
 
-function DeleteBlockButton({ barberId, blockedSlotId }: { barberId: string; blockedSlotId: string }) {
-  const action = deleteBlockedSlot.bind(null, barberId, blockedSlotId)
-  const [state, formAction, pending] = useActionState(action, INITIAL_STATE)
+function DeleteBlockButton({
+  barberId,
+  block,
+  onToast,
+}: {
+  barberId: string
+  block: UpcomingBlockedSlot
+  onToast: (message: string, tone: ToastTone) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [state, setState] = useState(INITIAL_STATE)
+  const [pending, startTransition] = useTransition()
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !pending) setIsOpen(false)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, pending])
+
+  const blockDetails = block.all_day
+    ? formatLocalDate(block.date, { day: 'numeric', month: 'long', year: 'numeric' })
+    : `${formatLocalDate(block.date, { day: 'numeric', month: 'long', year: 'numeric' })}, ${block.start_time?.slice(0, 5)} a ${block.end_time?.slice(0, 5)}`
+
+  function handleDelete() {
+    startTransition(async () => {
+      const result = await deleteBlockedSlot(barberId, block.id, INITIAL_STATE)
+      if (result.feedback === 'toast') onToast(result.message, result.tone)
+      else setState(result)
+      if (result.success) setIsOpen(false)
+    })
+  }
 
   return (
-    <form
-      action={formAction}
-      onSubmit={(event) => {
-        if (!window.confirm('¿Eliminar este bloqueo?')) event.preventDefault()
-      }}
-      className="flex flex-col items-end gap-1"
-    >
+    <>
       <button
-        type="submit"
-        disabled={pending}
-        className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
       >
         <Trash2 className="h-4 w-4" />
-        {pending ? 'Eliminando...' : 'Eliminar'}
+        Eliminar
       </button>
-      {state.message && !state.success && <span className="max-w-52 text-right text-xs text-red-600">{state.message}</span>}
-    </form>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`delete-block-title-${block.id}`}
+            aria-describedby={`delete-block-description-${block.id}`}
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl sm:p-6"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <h3 id={`delete-block-title-${block.id}`} className="mt-4 text-lg font-bold">
+              ¿Eliminar bloqueo?
+            </h3>
+            <p id={`delete-block-description-${block.id}`} className="mt-2 text-sm text-[var(--muted)]">
+              {block.all_day
+                ? 'Este día volverá a quedar disponible para recibir turnos.'
+                : 'Este horario volverá a quedar disponible para recibir turnos.'}
+            </p>
+            <p className="mt-2 text-sm font-medium">{blockDetails}</p>
+
+            {state.message && !state.success && (
+              <p aria-live="polite" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {state.message}
+              </p>
+            )}
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                disabled={pending}
+                className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={pending}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                {pending ? 'Eliminando...' : 'Eliminar bloqueo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
 export default function AvailabilityManager({ barberId, today, initialBlockedSlots }: Props) {
   const [mode, setMode] = useState<FormMode>('full-day')
+  const { toasts, showToast, dismissToast } = useToast()
+
+  const notify = useCallback((message: string, tone: ToastTone) => {
+    showToast({ message, tone })
+  }, [showToast])
+
+  const fullDayClientAction = useCallback(async (
+    previousState: BlockedSlotActionState,
+    formData: FormData
+  ) => {
+    const result = await createFullDayBlock(barberId, previousState, formData)
+    if (result.feedback === 'toast') {
+      notify(result.message, result.tone)
+      return INITIAL_STATE
+    }
+    return result
+  }, [barberId, notify])
+
+  const partialClientAction = useCallback(async (
+    previousState: BlockedSlotActionState,
+    formData: FormData
+  ) => {
+    const result = await createPartialBlock(barberId, previousState, formData)
+    if (result.feedback === 'toast') {
+      notify(result.message, result.tone)
+      return INITIAL_STATE
+    }
+    return result
+  }, [barberId, notify])
+
+  const vacationClientAction = useCallback(async (
+    previousState: BlockedSlotActionState,
+    formData: FormData
+  ) => {
+    const result = await createVacation(barberId, previousState, formData)
+    if (result.feedback === 'toast') {
+      notify(result.message, result.tone)
+      return INITIAL_STATE
+    }
+    return result
+  }, [barberId, notify])
+
   const [fullDayState, fullDayAction, fullDayPending] = useActionState(
-    createFullDayBlock.bind(null, barberId),
+    fullDayClientAction,
     INITIAL_STATE
   )
   const [partialState, partialAction, partialPending] = useActionState(
-    createPartialBlock.bind(null, barberId),
+    partialClientAction,
     INITIAL_STATE
   )
   const [vacationState, vacationAction, vacationPending] = useActionState(
-    createVacation.bind(null, barberId),
+    vacationClientAction,
     INITIAL_STATE
   )
 
@@ -92,6 +217,7 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
 
   return (
     <section className="mt-10 max-w-3xl border-t border-[var(--border)] pt-8">
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
       <h2 className="text-xl font-bold">Ausencias y bloqueos</h2>
       <p className="mt-1 text-sm text-[var(--muted)]">
         Bloqueá fechas u horarios en los que el barbero no estará disponible.
@@ -203,7 +329,11 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
                   {block.reason && <p className="mt-1 text-sm">Motivo: {block.reason}</p>}
                   </div>
                 </div>
-                <DeleteBlockButton barberId={barberId} blockedSlotId={block.id} />
+                <DeleteBlockButton
+                  barberId={barberId}
+                  block={block}
+                  onToast={notify}
+                />
               </article>
             ))}
           </div>
