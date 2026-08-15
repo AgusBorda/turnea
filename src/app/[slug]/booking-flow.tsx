@@ -114,7 +114,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
       // Fetch schedules for barber
       const { data: schedules } = await supabase
         .from('barber_schedules')
-        .select('*')
+        .select('day_of_week, start_time, end_time, is_working')
         .eq('barber_id', selectedBarber!.id)
 
       // Fetch existing appointments for that date

@@ -364,6 +364,67 @@ Este bloqueo debe resolverse antes de considerar 8D production-ready.
 
 ---
 
+### 🚧 Ticket 9 — Disponibilidad especial y vacaciones
+
+Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin romper reservas existentes ni depender únicamente de validaciones del navegador.
+
+#### ✅ Etapa 9A — Auditoría y modelo
+
+* [x] Auditar `blocked_slots`, `barber_schedules`, Booking y Agenda
+* [x] Mantener una fila de `blocked_slots` por barbero y fecha
+* [x] Definir vacaciones como expansión transaccional del rango
+* [x] Mantener fechas y horas como valores civiles de la barbería
+* [x] Definir política de conflicto con appointments existentes
+* [x] Diferir schedule overrides y bloqueos a nivel barbería
+
+#### ✅ Etapa 9B — Integridad y API owner
+
+* [x] Endurecer la estructura de `blocked_slots`
+* [x] Crear RPC owner-only para bloqueo individual
+* [x] Crear RPC owner-only para vacaciones
+* [x] Crear RPC owner-only para eliminación
+* [x] Verificar ownership dentro de PostgreSQL
+* [x] Retirar escrituras directas de `authenticated`
+* [x] Mantener lectura pública mínima sin exponer `reason`
+* [x] Rechazar bloqueos sobre appointments bloqueantes
+* [x] Serializar reservas y bloqueos mediante el mismo row lock de `barbers`
+* [x] Corregir solapamientos visuales usando el intervalo completo del servicio
+* [x] Reducir la lectura pública de `barber_schedules` a columnas mínimas
+
+**Política implementada:**
+* Un bloqueo puede ser de día completo o una franja civil sin cruce de medianoche.
+* Las fechas pasadas se evalúan según el timezone IANA de la barbería.
+* No se cancelan ni modifican appointments automáticamente.
+* `confirmed`, `pending` y `pending_payment` vigente impiden crear un bloqueo solapado.
+* `pending_payment` vencido y estados no bloqueantes no impiden el bloqueo.
+* Las vacaciones se insertan completamente o no se inserta ningún día.
+
+**Validaciones DEV:**
+* Creación y eliminación owner del happy path.
+* Solapamiento parcial rechazado.
+* Conflicto entre bloqueo de día completo y franja rechazado.
+* Vacaciones de cinco días creadas atómicamente.
+* Conflicto intermedio en vacaciones produjo cero inserts.
+* Bloqueo contra appointment `confirmed` rechazado.
+* `pending_payment` vigente bloqueó correctamente.
+* `pending_payment` vencido no bloqueó.
+* Ownership cruzado y acceso `anon` rechazados.
+* Carrera real appointment versus blocked slot serializada correctamente.
+* La sesión concurrente esperó sobre `transactionid` y continuó después de aproximadamente 15 segundos.
+* Confirmado que `create_appointment_atomic()` y `create_barber_blocked_slot()` bloquean la misma fila de `public.barbers`.
+
+#### ⏳ Etapas pendientes
+
+* [ ] 9C — Gestión por barbero
+* [ ] 9D — Agenda y Booking
+* [ ] 9E — Validación UX/mobile
+
+> Producción todavía no fue desplegada ni probada. Las validaciones de 9B corresponden exclusivamente a Supabase DEV.
+
+**Estado:** 🚧 En progreso
+
+---
+
 ## 🧹 Deuda técnica
 
 ### ⏳ Tipado Supabase
@@ -439,7 +500,9 @@ master
 
 **Actual:** Ticket 8D.1 — Investigación HTTP 401 en refunds TEST.
 
-Las etapas independientes definidas en el roadmap pueden avanzar en paralelo, sin olvidar este bloqueo antes de considerar 8D production-ready.
+**En paralelo:** Ticket 9C — Gestión por barbero.
+
+El bloqueo de 8D.1 sigue pendiente y debe resolverse antes de considerar 8D production-ready.
 
 ---
 

@@ -123,6 +123,11 @@ export interface BlockedSlot {
   created_at: string
 }
 
+export type PublicBarberSchedule = Pick<
+  BarberSchedule,
+  'day_of_week' | 'start_time' | 'end_time' | 'is_working'
+>
+
 export interface PublicBlockedSlot {
   date: string
   start_time: string | null

@@ -1,4 +1,4 @@
-import { BarberSchedule, BusySlot, PublicBlockedSlot, TimeSlot } from './types'
+import { BusySlot, PublicBarberSchedule, PublicBlockedSlot, TimeSlot } from './types'
 import { getLocalDateDayOfWeek, isLocalSlotInPast, LocalDate } from './datetime'
 
 /**
@@ -6,7 +6,7 @@ import { getLocalDateDayOfWeek, isLocalSlotInPast, LocalDate } from './datetime'
  */
 export function generateTimeSlots(
   date: LocalDate,
-  schedules: BarberSchedule[],
+  schedules: PublicBarberSchedule[],
   busySlots: BusySlot[],
   blockedSlots: PublicBlockedSlot[],
   timeZone: string,
@@ -42,14 +42,20 @@ export function generateTimeSlots(
 
     // Verificar si está bloqueado
     const isBlocked = blockedSlots.some(block => {
+      if (block.date !== date) return false
       if (block.all_day) return true
       if (!block.start_time || !block.end_time) return false
-      return timeStrFull >= block.start_time && timeStrFull < block.end_time
+      const blockStart = timeToMinutes(block.start_time)
+      const blockEnd = timeToMinutes(block.end_time)
+      return current < blockEnd && slotEnd > blockStart
     })
 
-    const hasAppointment = busySlots.some(slot =>
-      timeStrFull >= slot.start_time && timeStrFull < slot.end_time
-    )
+    const hasAppointment = busySlots.some(slot => {
+      if (slot.date !== date) return false
+      const appointmentStart = timeToMinutes(slot.start_time)
+      const appointmentEnd = timeToMinutes(slot.end_time)
+      return current < appointmentEnd && slotEnd > appointmentStart
+    })
 
     slots.push({
       time: timeStr,
