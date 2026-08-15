@@ -257,19 +257,63 @@ La base de datos acepta cualquier identificador IANA válido, aunque Settings of
 
 ---
 
-### ⏳ Ticket 8 — Pagos tardíos y conciliación Mercado Pago
+### 🚧 Ticket 8 — Pagos tardíos y conciliación Mercado Pago
 
-* [ ] Detectar pagos acreditados después del vencimiento de una reserva
-* [ ] Evitar confirmar turnos vencidos aunque Mercado Pago informe pago aprobado
-* [ ] Registrar correctamente el pago tardío para auditoría
-* [ ] Definir estado de conciliación para estos casos
-* [ ] Definir flujo de revisión manual
-* [ ] Evaluar reembolso manual vs automático
-* [ ] Mantener trazabilidad entre appointment, preference y payment de Mercado Pago
+#### ✅ Etapa 8A — Schema y registro atómico
+
+* [x] Crear `payment_reconciliations`
+* [x] Proteger la tabla mediante RLS owner-only
+* [x] Registrar conciliaciones desde una RPC exclusiva de `service_role`
+* [x] Garantizar idempotencia mediante `mp_payment_id`
+* [x] Rechazar conflictos de integridad sin sobrescribir datos financieros
+
+**Validaciones DEV:**
+* `anon` no puede leer conciliaciones.
+* El owner sólo puede leer conciliaciones de sus barberías.
+* `authenticated` no puede insertar ni modificar filas directamente.
+* Retries con el mismo `mp_payment_id` no duplican registros.
+* Datos financieros o asociaciones inconsistentes producen un error de integridad.
+
+#### ✅ Etapa 8B — Detección desde webhook
+
+* [x] Clasificar atómicamente confirmaciones de pagos
+* [x] Registrar pagos de appointments vencidos
+* [x] Registrar conflictos con un horario ya ocupado
+* [x] Mantener idempotencia ante retries del webhook
+* [x] Evitar confirmar appointments cuando corresponde conciliación
+
+**Validaciones DEV:**
+* `appointment_expired` validado end-to-end.
+* `slot_conflict → confirmation_conflict` validado end-to-end.
+* Retries del mismo payment mantuvieron una única conciliación.
+* Los appointments vencidos o con conflicto no se confirmaron incorrectamente.
+
+#### ✅ Etapa 8C — Dashboard y resolución manual retaining
+
+* [x] Crear listado owner-only de conciliaciones
+* [x] Mostrar badge de conciliaciones pendientes
+* [x] Crear vista de detalle
+* [x] Permitir `pending_review → resolved_retained`
+* [x] Exigir nota y registrar `resolved_by`/`resolved_at`
+* [x] Mantener el appointment original intacto
+* [x] Hacer idempotente un segundo intento de resolución
+
+**Validaciones DEV:**
+* Listado, filtros, badge y detalle validados con un owner real.
+* Ownership validado tanto en lectura como en la RPC autenticada.
+* La resolución guardó nota, owner y timestamp correctos.
+* El appointment asociado no cambió.
+* Un segundo intento no sobrescribió los datos de resolución.
+
+#### ⏳ Etapas pendientes
+
+* [ ] 8D — Reembolso manual
+* [ ] Evaluar reembolso automático opcional
 * [ ] Definir qué ve el cliente si pagó pero su reserva ya había vencido
-* [ ] Definir qué ve la barbería ante un pago que requiere conciliación
 
-**Estado:** ⏳ Pendiente
+> Producción todavía no fue desplegada ni probada. Estas validaciones corresponden exclusivamente a Supabase DEV y Vercel Preview/develop.
+
+**Estado:** 🚧 En progreso
 
 ---
 
@@ -346,7 +390,7 @@ master
 
 ## 📌 Ticket actual
 
-**Próximo:** Ticket 8 — Pagos tardíos y conciliación.
+**Próximo:** Ticket 8D — Reembolso manual.
 
 ---
 

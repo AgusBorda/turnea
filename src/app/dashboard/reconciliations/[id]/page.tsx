@@ -5,6 +5,8 @@ import { notFound, redirect } from 'next/navigation'
 import { formatLocalDate } from '@/lib/datetime'
 import {
   formatReconciliationAmount,
+  getAppointmentStatusLabel,
+  getDepositStatusLabel,
   getReconciliationReasonLabel,
   getReconciliationStatusClass,
   getReconciliationStatusLabel,
@@ -133,8 +135,8 @@ export default async function ReconciliationDetailPage({
                 <Detail label="Horario" value={`${appointment.start_time.slice(0, 5)} – ${appointment.end_time.slice(0, 5)}`} />
                 <Detail label="Barbero" value={appointment.barbers?.name || 'No disponible'} />
                 <Detail label="Servicio" value={appointment.services?.name || 'No disponible'} />
-                <Detail label="Estado del turno" value={appointment.status} />
-                <Detail label="Estado de seña" value={appointment.deposit_status} />
+                <Detail label="Estado del turno" value={getAppointmentStatusLabel(appointment.status)} />
+                <Detail label="Estado de seña" value={getDepositStatusLabel(appointment.deposit_status)} />
               </dl>
             ) : (
               <p className="text-sm text-[var(--muted)]">El turno original no está disponible.</p>

@@ -11,12 +11,36 @@ export const RECONCILIATION_STATUS_LABELS: Record<string, string> = {
   refund_failed: 'Error al reembolsar',
 }
 
+const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
+  pending: 'Pendiente',
+  pending_payment: 'Esperando pago',
+  confirmed: 'Confirmado',
+  completed: 'Completado',
+  cancelled: 'Cancelado',
+  no_show: 'No asistió',
+}
+
+const DEPOSIT_STATUS_LABELS: Record<string, string> = {
+  none: 'Sin seña',
+  pending: 'Seña pendiente',
+  paid: 'Seña pagada',
+  refunded: 'Seña reembolsada',
+}
+
 export function getReconciliationReasonLabel(reason: string): string {
   return RECONCILIATION_REASON_LABELS[reason] || 'Pago que requiere revisión'
 }
 
 export function getReconciliationStatusLabel(status: string): string {
   return RECONCILIATION_STATUS_LABELS[status] || 'Estado desconocido'
+}
+
+export function getAppointmentStatusLabel(status: string): string {
+  return APPOINTMENT_STATUS_LABELS[status] || 'Estado desconocido'
+}
+
+export function getDepositStatusLabel(status: string): string {
+  return DEPOSIT_STATUS_LABELS[status] || 'Estado desconocido'
 }
 
 export function getReconciliationStatusClass(status: string): string {
