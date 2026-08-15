@@ -83,6 +83,17 @@ type RefundVerificationStopReason =
   | 'payment_refunded_without_full_refund'
   | 'verification_required'
 
+type RefundVerificationDiagnosticCode =
+  | 'payment_unavailable'
+  | 'payment_response_invalid'
+  | 'merchant_order_unavailable'
+  | 'merchant_order_response_invalid'
+  | 'refunds_unavailable'
+  | 'refunds_response_invalid'
+  | 'refund_response_invalid'
+  | 'payment_refunded_without_full_refund'
+  | 'no_new_refund_allowed'
+
 function logRefundVerificationCheckpoint(args: {
   operation: 'get_payment' | 'get_merchant_order' | 'list_refunds'
   httpStatus: number
@@ -202,11 +213,17 @@ async function processRefundClaim(
     return { success: false, message: 'El servicio de pagos no está disponible.' }
   }
 
-  async function markVerificationRequired(): Promise<RefundReconciliationState> {
+  async function markVerificationRequired(
+    diagnosticCode: RefundVerificationDiagnosticCode
+  ): Promise<RefundReconciliationState> {
+    const diagnosticSuffix = process.env.VERCEL_ENV === 'preview'
+      ? ` [diag:${diagnosticCode}]`
+      : ''
+
     if (!processingEstablished) {
       return {
         success: false,
-        message: 'No se pudo verificar el estado actual. El intento anterior permanece registrado sin emitir un nuevo reembolso.',
+        message: `No se pudo verificar el estado actual. El intento anterior permanece registrado sin emitir un nuevo reembolso.${diagnosticSuffix}`,
       }
     }
     const { error } = await admin.rpc('mark_payment_reconciliation_refund_verification_required', {
@@ -216,12 +233,12 @@ async function processRefundClaim(
     if (error) {
       return {
         success: false,
-        message: 'No se pudo guardar el estado pendiente de verificación.',
+        message: `No se pudo guardar el estado pendiente de verificación.${diagnosticSuffix}`,
       }
     }
     return {
       success: false,
-      message: 'El resultado del reembolso está pendiente de verificación. No se enviará una nueva solicitud con otra clave.',
+      message: `El resultado del reembolso está pendiente de verificación. No se enviará una nueva solicitud con otra clave.${diagnosticSuffix}`,
     }
   }
 
@@ -255,7 +272,7 @@ async function processRefundClaim(
       || !amountsMatch(refund.amount, claim.amount)
       || refund.status !== 'approved'
     ) {
-      return markVerificationRequired()
+      return markVerificationRequired('refund_response_invalid')
     }
 
     if (!await ensureProcessing()) {
@@ -322,7 +339,7 @@ async function processRefundClaim(
       reason: 'verification_required',
       paymentId: claim.mp_payment_id,
     })
-    return markVerificationRequired()
+    return markVerificationRequired('payment_unavailable')
   }
   if (!paymentResult.ok || !paymentResult.data) {
     const errorCode = classifyMercadoPagoRefundError(paymentResult.status, paymentResult.errorCode)
@@ -340,7 +357,7 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
-    return errorCode ? failRefund(errorCode) : markVerificationRequired()
+    return errorCode ? failRefund(errorCode) : markVerificationRequired('payment_response_invalid')
   }
 
   const payment = paymentResult.data
@@ -399,7 +416,7 @@ async function processRefundClaim(
       reason: 'verification_required',
       paymentId: claim.mp_payment_id,
     })
-    return markVerificationRequired()
+    return markVerificationRequired('merchant_order_unavailable')
   }
   if (!merchantOrderResult.ok || !merchantOrderResult.data) {
     const errorCode = classifyMercadoPagoRefundError(
@@ -420,7 +437,9 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
-    return errorCode ? failRefund(errorCode) : markVerificationRequired()
+    return errorCode
+      ? failRefund(errorCode)
+      : markVerificationRequired('merchant_order_response_invalid')
   }
   logRefundVerificationCheckpoint({
     operation: 'get_merchant_order',
@@ -443,7 +462,7 @@ async function processRefundClaim(
       reason: 'verification_required',
       paymentId: claim.mp_payment_id,
     })
-    return markVerificationRequired()
+    return markVerificationRequired('refunds_unavailable')
   }
   if (!refundsResult.ok || !refundsResult.data) {
     const errorCode = classifyMercadoPagoRefundError(refundsResult.status, refundsResult.errorCode)
@@ -461,7 +480,7 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
-    return errorCode ? failRefund(errorCode) : markVerificationRequired()
+    return errorCode ? failRefund(errorCode) : markVerificationRequired('refunds_response_invalid')
   }
 
   logRefundVerificationCheckpoint({
@@ -490,7 +509,7 @@ async function processRefundClaim(
       reason: 'payment_refunded_without_full_refund',
       paymentId: claim.mp_payment_id,
     })
-    return markVerificationRequired()
+    return markVerificationRequired('payment_refunded_without_full_refund')
   }
 
   if (!allowNewRefund) {
@@ -499,7 +518,7 @@ async function processRefundClaim(
       reason: 'verification_required',
       paymentId: claim.mp_payment_id,
     })
-    return markVerificationRequired()
+    return markVerificationRequired('no_new_refund_allowed')
   }
 
   if (!await ensureProcessing()) {
@@ -513,10 +532,12 @@ async function processRefundClaim(
   )
 
   if (!refundResult.responseReceived || refundResult.status === null || refundResult.status >= 500) {
-    return markVerificationRequired()
+    return markVerificationRequired('refund_response_invalid')
   }
   if (!refundResult.ok || !refundResult.data) {
-    if (refundResult.errorCode === '4296') return markVerificationRequired()
+    if (refundResult.errorCode === '4296') {
+      return markVerificationRequired('refund_response_invalid')
+    }
     const errorCode = classifyMercadoPagoRefundError(refundResult.status, refundResult.errorCode)
     if (errorCode === 'credential_error') {
       logCredentialErrorDiagnostic({
@@ -525,7 +546,7 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
-    return errorCode ? failRefund(errorCode) : markVerificationRequired()
+    return errorCode ? failRefund(errorCode) : markVerificationRequired('refund_response_invalid')
   }
 
   return completeRefund(refundResult.data)
