@@ -51,6 +51,24 @@ type RefundErrorCode =
 
 const AMOUNT_TOLERANCE = 0.005
 
+function logCredentialErrorDiagnostic(args: {
+  operation:
+    | 'load_credential'
+    | 'get_payment'
+    | 'get_merchant_order'
+    | 'list_refunds'
+    | 'create_refund'
+  httpStatus: number | null
+  paymentId: string
+}) {
+  console.warn('[mp-refund] credential error diagnostics', {
+    operation: args.operation,
+    httpStatus: args.httpStatus,
+    mappedError: 'credential_error',
+    paymentId: args.paymentId,
+  })
+}
+
 function asNumericId(value: unknown): string {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value)
   if (typeof value === 'string' && /^\d+$/.test(value)) return value
@@ -241,7 +259,14 @@ async function processRefundClaim(
   ])
 
   const accessToken = credentialResult.data?.mp_access_token?.trim()
-  if (credentialResult.error || !accessToken) return failRefund('credential_error')
+  if (credentialResult.error || !accessToken) {
+    logCredentialErrorDiagnostic({
+      operation: 'load_credential',
+      httpStatus: null,
+      paymentId: claim.mp_payment_id,
+    })
+    return failRefund('credential_error')
+  }
 
   const appointment = appointmentResult.data
   if (
@@ -259,6 +284,13 @@ async function processRefundClaim(
   }
   if (!paymentResult.ok || !paymentResult.data) {
     const errorCode = classifyMercadoPagoRefundError(paymentResult.status, paymentResult.errorCode)
+    if (errorCode === 'credential_error') {
+      logCredentialErrorDiagnostic({
+        operation: 'get_payment',
+        httpStatus: paymentResult.status,
+        paymentId: claim.mp_payment_id,
+      })
+    }
     return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
 
@@ -293,6 +325,13 @@ async function processRefundClaim(
       merchantOrderResult.status,
       merchantOrderResult.errorCode
     )
+    if (errorCode === 'credential_error') {
+      logCredentialErrorDiagnostic({
+        operation: 'get_merchant_order',
+        httpStatus: merchantOrderResult.status,
+        paymentId: claim.mp_payment_id,
+      })
+    }
     return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
   if (merchantOrderResult.data.preference_id !== claim.mp_preference_id) {
@@ -305,6 +344,13 @@ async function processRefundClaim(
   }
   if (!refundsResult.ok || !refundsResult.data) {
     const errorCode = classifyMercadoPagoRefundError(refundsResult.status, refundsResult.errorCode)
+    if (errorCode === 'credential_error') {
+      logCredentialErrorDiagnostic({
+        operation: 'list_refunds',
+        httpStatus: refundsResult.status,
+        paymentId: claim.mp_payment_id,
+      })
+    }
     return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
 
@@ -337,6 +383,13 @@ async function processRefundClaim(
   if (!refundResult.ok || !refundResult.data) {
     if (refundResult.errorCode === '4296') return markVerificationRequired()
     const errorCode = classifyMercadoPagoRefundError(refundResult.status, refundResult.errorCode)
+    if (errorCode === 'credential_error') {
+      logCredentialErrorDiagnostic({
+        operation: 'create_refund',
+        httpStatus: refundResult.status,
+        paymentId: claim.mp_payment_id,
+      })
+    }
     return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
 
