@@ -19,8 +19,20 @@ export default async function DashboardRootLayout({
     .eq('owner_id', user.id)
     .single()
 
+  const { count: pendingReconciliations } = barbershop
+    ? await supabase
+        .from('payment_reconciliations')
+        .select('id', { count: 'exact', head: true })
+        .eq('barbershop_id', barbershop.id)
+        .in('status', ['pending_review', 'refund_failed'])
+    : { count: 0 }
+
   return (
-    <DashboardLayout barbershop={barbershop} userEmail={user.email || ''}>
+    <DashboardLayout
+      barbershop={barbershop}
+      userEmail={user.email || ''}
+      pendingReconciliations={pendingReconciliations || 0}
+    >
       {children}
     </DashboardLayout>
   )

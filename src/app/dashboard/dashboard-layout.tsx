@@ -10,6 +10,7 @@ import {
   Scissors,
   Users,
   Settings,
+  BadgeDollarSign,
   LogOut,
   Menu,
   X,
@@ -20,6 +21,7 @@ interface Props {
   barbershop: { id: string; name: string } | null
   userEmail: string
   children: React.ReactNode
+  pendingReconciliations: number
 }
 
 const navItems = [
@@ -27,10 +29,11 @@ const navItems = [
   { href: '/dashboard/agenda', icon: Calendar, label: 'Agenda' },
   { href: '/dashboard/services', icon: Scissors, label: 'Servicios' },
   { href: '/dashboard/barbers', icon: Users, label: 'Barberos' },
+  { href: '/dashboard/reconciliations', icon: BadgeDollarSign, label: 'Conciliaciones' },
   { href: '/dashboard/settings', icon: Settings, label: 'Configuración' },
 ]
 
-export default function DashboardLayout({ barbershop, userEmail, children }: Props) {
+export default function DashboardLayout({ barbershop, userEmail, pendingReconciliations, children }: Props) {
   const pathname = usePathname()
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -64,7 +67,9 @@ export default function DashboardLayout({ barbershop, userEmail, children }: Pro
           {/* Nav */}
           <nav className="flex-1 p-3 space-y-1">
             {navItems.map(item => {
-              const isActive = pathname === item.href
+              const isActive = item.href === '/dashboard'
+                ? pathname === item.href
+                : pathname.startsWith(item.href)
               return (
                 <Link
                   key={item.href}
@@ -77,7 +82,12 @@ export default function DashboardLayout({ barbershop, userEmail, children }: Pro
                   }`}
                 >
                   <item.icon className="w-5 h-5" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {item.href === '/dashboard/reconciliations' && pendingReconciliations > 0 && (
+                    <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-xs font-semibold text-white">
+                      {pendingReconciliations > 99 ? '99+' : pendingReconciliations}
+                    </span>
+                  )}
                 </Link>
               )
             })}
