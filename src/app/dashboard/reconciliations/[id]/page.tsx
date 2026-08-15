@@ -7,13 +7,16 @@ import {
   formatReconciliationAmount,
   getAppointmentStatusLabel,
   getDepositStatusLabel,
+  getRefundErrorMessage,
   getReconciliationReasonLabel,
   getReconciliationStatusClass,
   getReconciliationStatusLabel,
+  isRefundErrorRetryable,
 } from '@/lib/reconciliations'
 import { createClient } from '@/lib/supabase/server'
 
 import ResolveRetainedForm from './resolve-retained-form'
+import { RequestRefundForm, VerifyRefundForm } from './refund-action-form'
 
 interface ReconciliationDetail {
   id: string
@@ -26,6 +29,10 @@ interface ReconciliationDetail {
   mp_preference_id: string | null
   resolution_notes: string | null
   resolved_at: string | null
+  mp_refund_id: string | null
+  refund_amount: number | null
+  refund_requested_at: string | null
+  last_error_code: string | null
   appointments: {
     id: string
     date: string
@@ -71,6 +78,10 @@ export default async function ReconciliationDetailPage({
       mp_preference_id,
       resolution_notes,
       resolved_at,
+      mp_refund_id,
+      refund_amount,
+      refund_requested_at,
+      last_error_code,
       appointments!inner(
         id,
         date,
@@ -165,6 +176,9 @@ export default async function ReconciliationDetailPage({
               <Detail label="Monto" value={formatReconciliationAmount(Number(reconciliation.amount), reconciliation.currency)} />
               <Detail label="Payment ID" value={reconciliation.mp_payment_id} mono />
               <Detail label="Preference ID" value={reconciliation.mp_preference_id || 'No disponible'} mono />
+              {reconciliation.mp_refund_id && (
+                <Detail label="Refund ID" value={reconciliation.mp_refund_id} mono />
+              )}
               <Detail
                 label="Detectado"
                 value={new Intl.DateTimeFormat('es-AR', {
@@ -186,6 +200,50 @@ export default async function ReconciliationDetailPage({
                 Esto no realiza un reembolso en Mercado Pago.
               </div>
               <ResolveRetainedForm reconciliationId={reconciliation.id} />
+              <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-wide text-[var(--muted)]">
+                <span className="h-px flex-1 bg-[var(--border)]" /> o <span className="h-px flex-1 bg-[var(--border)]" />
+              </div>
+              <RequestRefundForm
+                reconciliationId={reconciliation.id}
+                formattedAmount={formatReconciliationAmount(Number(reconciliation.amount), reconciliation.currency)}
+              />
+            </section>
+          ) : reconciliation.status === 'refund_processing' ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+              <h2 className="mb-2 font-semibold text-amber-900">Reembolso en proceso</h2>
+              <p className="mb-4 text-sm text-amber-800">
+                El reembolso fue iniciado o su resultado está pendiente de verificación. Turnea no generará una nueva clave al verificarlo.
+              </p>
+              <VerifyRefundForm reconciliationId={reconciliation.id} allowRetry={false} />
+            </section>
+          ) : reconciliation.status === 'refund_failed' ? (
+            <section className="rounded-xl border border-red-200 bg-red-50 p-5">
+              <h2 className="mb-2 font-semibold text-red-900">No se completó el reembolso</h2>
+              <p className="mb-4 text-sm text-red-800">
+                {getRefundErrorMessage(reconciliation.last_error_code)}
+              </p>
+              <VerifyRefundForm
+                reconciliationId={reconciliation.id}
+                allowRetry={isRefundErrorRetryable(reconciliation.last_error_code)}
+              />
+            </section>
+          ) : reconciliation.status === 'refunded' ? (
+            <section className="rounded-xl border border-green-200 bg-green-50 p-5">
+              <h2 className="mb-2 font-semibold text-green-900">Reembolso confirmado</h2>
+              <p className="text-sm text-green-800">
+                Mercado Pago confirmó la devolución de{' '}
+                {formatReconciliationAmount(Number(reconciliation.refund_amount), reconciliation.currency)}.
+                El tiempo de acreditación al cliente depende del medio de pago.
+              </p>
+              {reconciliation.resolved_at && (
+                <p className="mt-3 text-xs text-green-700">
+                  Confirmado {new Intl.DateTimeFormat('es-AR', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                    timeZone: barbershop.timezone,
+                  }).format(new Date(reconciliation.resolved_at))}
+                </p>
+              )}
             </section>
           ) : reconciliation.resolution_notes ? (
             <section className="rounded-xl border border-[var(--border)] bg-white p-5">

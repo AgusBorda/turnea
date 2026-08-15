@@ -27,6 +27,23 @@ const DEPOSIT_STATUS_LABELS: Record<string, string> = {
   refunded: 'Seña reembolsada',
 }
 
+const REFUND_ERROR_MESSAGES: Record<string, string> = {
+  payment_not_refundable: 'Mercado Pago indicó que este pago no puede reembolsarse.',
+  payment_too_old: 'El pago está fuera del plazo permitido para reembolsos.',
+  insufficient_balance: 'La cuenta no tiene saldo suficiente para realizar el reembolso.',
+  credential_error: 'La configuración de Mercado Pago debe revisarse.',
+  financial_mismatch: 'Los datos del pago no coinciden con la conciliación.',
+  partial_refund_detected: 'El pago tiene un reembolso parcial y requiere revisión manual.',
+  verification_required: 'El resultado del reembolso está pendiente de verificación.',
+  temporary_error: 'Mercado Pago informó un error temporal.',
+  unknown_error: 'Mercado Pago rechazó el reembolso y el caso requiere revisión.',
+}
+
+const RETRYABLE_REFUND_ERROR_CODES = new Set([
+  'insufficient_balance',
+  'temporary_error',
+])
+
 export function getReconciliationReasonLabel(reason: string): string {
   return RECONCILIATION_REASON_LABELS[reason] || 'Pago que requiere revisión'
 }
@@ -41,6 +58,16 @@ export function getAppointmentStatusLabel(status: string): string {
 
 export function getDepositStatusLabel(status: string): string {
   return DEPOSIT_STATUS_LABELS[status] || 'Estado desconocido'
+}
+
+export function getRefundErrorMessage(code: string | null): string {
+  return code
+    ? REFUND_ERROR_MESSAGES[code] || 'No se pudo completar el reembolso.'
+    : 'No se pudo completar el reembolso.'
+}
+
+export function isRefundErrorRetryable(code: string | null): boolean {
+  return Boolean(code && RETRYABLE_REFUND_ERROR_CODES.has(code))
 }
 
 export function getReconciliationStatusClass(status: string): string {
