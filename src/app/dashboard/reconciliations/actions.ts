@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 
 import {
   createMercadoPagoFullRefund,
+  getMercadoPagoCurrentUser,
   getMercadoPagoMerchantOrder,
   getMercadoPagoPayment,
   getMercadoPagoRefunds,
@@ -21,6 +22,11 @@ export interface ResolveReconciliationState {
 }
 
 export interface RefundReconciliationState {
+  success: boolean
+  message: string
+}
+
+export interface RefundIdentityDiagnosticState {
   success: boolean
   message: string
 }
@@ -603,6 +609,79 @@ export async function verifyOrRetryPaymentReconciliationRefund(
   const result = await processRefundClaim(prepared.supabase, prepared.claim, retryable)
   revalidateReconciliation(reconciliationId)
   return result
+}
+
+export async function diagnosePaymentReconciliationIdentity(
+  reconciliationId: string,
+  _previousState: RefundIdentityDiagnosticState
+): Promise<RefundIdentityDiagnosticState> {
+  void _previousState
+
+  if (process.env.VERCEL_ENV !== 'preview') {
+    return { success: false, message: 'Diagnóstico no disponible.' }
+  }
+
+  if (!UUID_PATTERN.test(reconciliationId)) {
+    return { success: false, message: '[diag:token_identity_unavailable]' }
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return { success: false, message: '[diag:token_identity_unavailable]' }
+  }
+
+  const { data: reconciliation, error: reconciliationError } = await supabase
+    .from('payment_reconciliations')
+    .select('barbershop_id, mp_payment_id')
+    .eq('id', reconciliationId)
+    .maybeSingle()
+
+  if (reconciliationError || !reconciliation) {
+    return { success: false, message: '[diag:token_identity_unavailable]' }
+  }
+
+  let admin: ReturnType<typeof createAdminClient>
+  try {
+    admin = createAdminClient()
+  } catch {
+    return { success: false, message: '[diag:token_identity_unavailable]' }
+  }
+
+  const { data: credential, error: credentialError } = await admin
+    .from('barbershop_payment_credentials')
+    .select('mp_access_token')
+    .eq('barbershop_id', reconciliation.barbershop_id)
+    .maybeSingle()
+
+  const accessToken = credential?.mp_access_token?.trim()
+  if (credentialError || !accessToken) {
+    return { success: false, message: '[diag:token_identity_unavailable]' }
+  }
+
+  const [currentUserResult, paymentResult] = await Promise.all([
+    getMercadoPagoCurrentUser(accessToken),
+    getMercadoPagoPayment(accessToken, reconciliation.mp_payment_id),
+  ])
+
+  const tokenOwnerId = asNumericId(currentUserResult.data?.id)
+  const collectorId = asNumericId(paymentResult.data?.collector_id)
+  if (
+    !currentUserResult.ok
+    || !paymentResult.ok
+    || !tokenOwnerId
+    || !collectorId
+  ) {
+    return { success: false, message: '[diag:token_identity_unavailable]' }
+  }
+
+  const matches = tokenOwnerId === collectorId
+  return {
+    success: matches,
+    message: matches
+      ? '[diag:token_owner_matches_collector]'
+      : '[diag:token_owner_mismatch]',
+  }
 }
 
 export async function resolveReconciliationRetained(
