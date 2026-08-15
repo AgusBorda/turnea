@@ -413,9 +413,24 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 * La sesión concurrente esperó sobre `transactionid` y continuó después de aproximadamente 15 segundos.
 * Confirmado que `create_appointment_atomic()` y `create_barber_blocked_slot()` bloquean la misma fila de `public.barbers`.
 
+#### 🚧 Etapa 9C — Gestión por barbero
+
+* [x] Integrar “Ausencias y bloqueos” en la configuración de horarios del barbero
+* [x] Listar próximos bloqueos con fecha, franja, tipo y motivo interno
+* [x] Crear bloqueos de día completo mediante RPC owner-only
+* [x] Crear bloqueos horarios parciales mediante RPC owner-only
+* [x] Crear vacaciones por rango mediante RPC owner-only
+* [x] Eliminar bloqueos con confirmación mediante RPC owner-only
+* [x] Traducir errores cerrados de PostgreSQL a mensajes amigables
+* [x] Calcular fechas futuras según el timezone IANA de la barbería
+* [x] Mantener lectura owner server-side sin usar `service_role`
+* [ ] Validar el flujo completo en localhost y Vercel Preview contra Supabase DEV
+* [ ] Validar experiencia mobile real
+
+**Estado:** implementado localmente; pendiente de validación UI en DEV/Preview.
+
 #### ⏳ Etapas pendientes
 
-* [ ] 9C — Gestión por barbero
 * [ ] 9D — Agenda y Booking
 * [ ] 9E — Validación UX/mobile
 
