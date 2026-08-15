@@ -69,6 +69,38 @@ function logCredentialErrorDiagnostic(args: {
   })
 }
 
+type RefundVerificationStage =
+  | 'appointment_validation'
+  | 'payment_validation'
+  | 'merchant_order_validation'
+  | 'refunds_validation'
+
+type RefundVerificationStopReason =
+  | 'financial_mismatch'
+  | 'missing_merchant_order'
+  | 'preference_mismatch'
+  | 'partial_refund_detected'
+  | 'payment_refunded_without_full_refund'
+  | 'verification_required'
+
+function logRefundVerificationCheckpoint(args: {
+  operation: 'get_payment' | 'get_merchant_order' | 'list_refunds'
+  httpStatus: number
+  paymentId: string
+  collectorIdPresent?: boolean
+  liveMode?: boolean | null
+}) {
+  console.info('[mp-refund] verification checkpoint', args)
+}
+
+function logRefundVerificationStopped(args: {
+  stage: RefundVerificationStage
+  reason: RefundVerificationStopReason
+  paymentId: string
+}) {
+  console.warn('[mp-refund] verification stopped', args)
+}
+
 function asNumericId(value: unknown): string {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value)
   if (typeof value === 'string' && /^\d+$/.test(value)) return value
@@ -275,11 +307,21 @@ async function processRefundClaim(
     || !amountsMatch(appointment.deposit_amount, claim.amount)
     || appointment.mp_preference_id !== claim.mp_preference_id
   ) {
+    logRefundVerificationStopped({
+      stage: 'appointment_validation',
+      reason: 'financial_mismatch',
+      paymentId: claim.mp_payment_id,
+    })
     return failRefund('financial_mismatch')
   }
 
   const paymentResult = await getMercadoPagoPayment(accessToken, claim.mp_payment_id)
   if (!paymentResult.responseReceived || paymentResult.status === null || paymentResult.status >= 500) {
+    logRefundVerificationStopped({
+      stage: 'payment_validation',
+      reason: 'verification_required',
+      paymentId: claim.mp_payment_id,
+    })
     return markVerificationRequired()
   }
   if (!paymentResult.ok || !paymentResult.data) {
@@ -291,10 +333,24 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
+    if (!errorCode) {
+      logRefundVerificationStopped({
+        stage: 'payment_validation',
+        reason: 'verification_required',
+        paymentId: claim.mp_payment_id,
+      })
+    }
     return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
 
   const payment = paymentResult.data
+  logRefundVerificationCheckpoint({
+    operation: 'get_payment',
+    httpStatus: paymentResult.status,
+    paymentId: claim.mp_payment_id,
+    collectorIdPresent: payment.collector_id != null,
+    liveMode: typeof payment.live_mode === 'boolean' ? payment.live_mode : null,
+  })
   const paymentStatus = typeof payment.status === 'string' ? payment.status : ''
   const externalReference = typeof payment.external_reference === 'string'
     ? payment.external_reference.trim()
@@ -310,14 +366,39 @@ async function processRefundClaim(
     || paidCurrency !== claim.currency
     || (paymentStatus !== 'approved' && paymentStatus !== 'refunded')
   ) {
+    logRefundVerificationStopped({
+      stage: 'payment_validation',
+      reason: 'financial_mismatch',
+      paymentId: claim.mp_payment_id,
+    })
     return failRefund('financial_mismatch')
   }
 
   const merchantOrderId = asNumericId(payment.order?.id)
-  if (!merchantOrderId || !claim.mp_preference_id) return failRefund('financial_mismatch')
+  if (!merchantOrderId) {
+    logRefundVerificationStopped({
+      stage: 'merchant_order_validation',
+      reason: 'missing_merchant_order',
+      paymentId: claim.mp_payment_id,
+    })
+    return failRefund('financial_mismatch')
+  }
+  if (!claim.mp_preference_id) {
+    logRefundVerificationStopped({
+      stage: 'merchant_order_validation',
+      reason: 'preference_mismatch',
+      paymentId: claim.mp_payment_id,
+    })
+    return failRefund('financial_mismatch')
+  }
 
   const merchantOrderResult = await getMercadoPagoMerchantOrder(accessToken, merchantOrderId)
   if (!merchantOrderResult.responseReceived || merchantOrderResult.status === null || merchantOrderResult.status >= 500) {
+    logRefundVerificationStopped({
+      stage: 'merchant_order_validation',
+      reason: 'verification_required',
+      paymentId: claim.mp_payment_id,
+    })
     return markVerificationRequired()
   }
   if (!merchantOrderResult.ok || !merchantOrderResult.data) {
@@ -332,14 +413,36 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
+    if (!errorCode) {
+      logRefundVerificationStopped({
+        stage: 'merchant_order_validation',
+        reason: 'verification_required',
+        paymentId: claim.mp_payment_id,
+      })
+    }
     return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
+  logRefundVerificationCheckpoint({
+    operation: 'get_merchant_order',
+    httpStatus: merchantOrderResult.status,
+    paymentId: claim.mp_payment_id,
+  })
   if (merchantOrderResult.data.preference_id !== claim.mp_preference_id) {
+    logRefundVerificationStopped({
+      stage: 'merchant_order_validation',
+      reason: 'preference_mismatch',
+      paymentId: claim.mp_payment_id,
+    })
     return failRefund('financial_mismatch')
   }
 
   const refundsResult = await getMercadoPagoRefunds(accessToken, claim.mp_payment_id)
   if (!refundsResult.responseReceived || refundsResult.status === null || refundsResult.status >= 500) {
+    logRefundVerificationStopped({
+      stage: 'refunds_validation',
+      reason: 'verification_required',
+      paymentId: claim.mp_payment_id,
+    })
     return markVerificationRequired()
   }
   if (!refundsResult.ok || !refundsResult.data) {
@@ -351,8 +454,21 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
+    if (!errorCode) {
+      logRefundVerificationStopped({
+        stage: 'refunds_validation',
+        reason: 'verification_required',
+        paymentId: claim.mp_payment_id,
+      })
+    }
     return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
+
+  logRefundVerificationCheckpoint({
+    operation: 'list_refunds',
+    httpStatus: refundsResult.status,
+    paymentId: claim.mp_payment_id,
+  })
 
   const approvedRefunds = refundsResult.data.filter(refund => refund.status === 'approved')
   const existingFullRefund = approvedRefunds.find(refund =>
@@ -360,10 +476,29 @@ async function processRefundClaim(
     && amountsMatch(refund.amount, claim.amount)
   )
   if (existingFullRefund) return completeRefund(existingFullRefund)
-  if (approvedRefunds.length > 0) return failRefund('partial_refund_detected')
-  if (paymentStatus === 'refunded') return markVerificationRequired()
+  if (approvedRefunds.length > 0) {
+    logRefundVerificationStopped({
+      stage: 'refunds_validation',
+      reason: 'partial_refund_detected',
+      paymentId: claim.mp_payment_id,
+    })
+    return failRefund('partial_refund_detected')
+  }
+  if (paymentStatus === 'refunded') {
+    logRefundVerificationStopped({
+      stage: 'refunds_validation',
+      reason: 'payment_refunded_without_full_refund',
+      paymentId: claim.mp_payment_id,
+    })
+    return markVerificationRequired()
+  }
 
   if (!allowNewRefund) {
+    logRefundVerificationStopped({
+      stage: 'refunds_validation',
+      reason: 'verification_required',
+      paymentId: claim.mp_payment_id,
+    })
     return markVerificationRequired()
   }
 
