@@ -1,14 +1,11 @@
 import 'server-only'
 
 const MERCADO_PAGO_API_URL = 'https://api.mercadopago.com'
-const MERCADO_LIBRE_API_URL = 'https://api.mercadolibre.com'
 const REQUEST_TIMEOUT_MS = 12_000
 
 export interface MercadoPagoPayment {
   id?: unknown
   status?: unknown
-  collector_id?: unknown
-  live_mode?: unknown
   external_reference?: unknown
   transaction_amount?: unknown
   currency_id?: unknown
@@ -24,10 +21,6 @@ export interface MercadoPagoRefund {
 
 export interface MercadoPagoMerchantOrder {
   preference_id?: unknown
-}
-
-export interface MercadoPagoCurrentUser {
-  id?: unknown
 }
 
 export interface MercadoPagoApiResult<T> {
@@ -49,14 +42,13 @@ function extractErrorCode(value: unknown): string | null {
 async function mercadoPagoRequest<T>(
   accessToken: string,
   path: string,
-  init?: RequestInit,
-  baseUrl = MERCADO_PAGO_API_URL
+  init?: RequestInit
 ): Promise<MercadoPagoApiResult<T>> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(`${MERCADO_PAGO_API_URL}${path}`, {
       ...init,
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -85,15 +77,6 @@ async function mercadoPagoRequest<T>(
   } finally {
     clearTimeout(timeout)
   }
-}
-
-export function getMercadoPagoCurrentUser(accessToken: string) {
-  return mercadoPagoRequest<MercadoPagoCurrentUser>(
-    accessToken,
-    '/users/me',
-    undefined,
-    MERCADO_LIBRE_API_URL
-  )
 }
 
 export function getMercadoPagoPayment(accessToken: string, paymentId: string) {

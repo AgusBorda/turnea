@@ -4,15 +4,12 @@ import { useActionState, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import {
-  diagnosePaymentReconciliationIdentity,
   requestPaymentReconciliationRefund,
   verifyOrRetryPaymentReconciliationRefund,
-  type RefundIdentityDiagnosticState,
   type RefundReconciliationState,
 } from '../actions'
 
 const INITIAL_STATE: RefundReconciliationState = { success: false, message: '' }
-const INITIAL_DIAGNOSTIC_STATE: RefundIdentityDiagnosticState = { success: false, message: '' }
 
 export function RequestRefundForm({
   reconciliationId,
@@ -93,29 +90,7 @@ export function VerifyRefundForm({
   )
 }
 
-export function RefundIdentityDiagnosticForm({
-  reconciliationId,
-}: {
-  reconciliationId: string
-}) {
-  const action = diagnosePaymentReconciliationIdentity.bind(null, reconciliationId)
-  const [state, formAction, pending] = useActionState(action, INITIAL_DIAGNOSTIC_STATE)
-
-  return (
-    <form action={formAction} className="mt-3 space-y-3">
-      <ActionMessage state={state} />
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-lg border border-slate-400 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {pending ? 'Comparando identidad...' : 'Diagnosticar identidad (sólo lectura)'}
-      </button>
-    </form>
-  )
-}
-
-function ActionMessage({ state }: { state: RefundReconciliationState | RefundIdentityDiagnosticState }) {
+function ActionMessage({ state }: { state: RefundReconciliationState }) {
   if (!state.message) return null
   return (
     <p

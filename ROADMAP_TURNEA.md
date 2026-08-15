@@ -305,9 +305,43 @@ La base de datos acepta cualquier identificador IANA válido, aunque Settings of
 * El appointment asociado no cambió.
 * Un segundo intento no sobrescribió los datos de resolución.
 
+#### 🚧 Etapa 8D — Reembolso manual
+
+**Estado:** Implementada y validada parcialmente en DEV.
+
+**Validado en DEV:**
+* Schema y RPCs de reembolso.
+* Acceso owner-only y límites de service role.
+* Persistencia y reutilización de la idempotency key.
+* Protección frente a doble claim.
+* Complete idempotente y detección de conflictos de integridad.
+* Flujos de fail, retry y `verification_required`.
+* UI de solicitud y verificación de reembolso.
+* El appointment asociado permanece intacto.
+* El owner del Access Token coincide con el collector del payment.
+* Las lecturas de payment, merchant order y refunds son válidas.
+
+**Pendiente:**
+* [ ] Validar un refund TEST exitoso end-to-end.
+
+**Bloqueo actual:**
+* `POST /v1/payments/{payment_id}/refunds` devuelve HTTP 401 en TEST, aunque el token puede leer el payment, su owner coincide con el collector y las validaciones de payment, preference y refunds son correctas.
+* La causa raíz todavía no está demostrada. Este bloqueo debe resolverse antes de considerar 8D production-ready.
+
+**Subtarea — Investigar HTTP 401 de Mercado Pago al crear refund TEST:**
+* [ ] Crear un payment TEST nuevo específicamente para refund.
+* [ ] Confirmar seller y buyer TEST correctos.
+* [ ] Confirmar saldo y condiciones de la cuenta TEST.
+* [ ] Revisar configuración, aplicación y credencial vigente.
+* [ ] Revisar documentación o soporte oficial de Mercado Pago.
+* [ ] Ejecutar un único refund TEST.
+* [ ] Validar `status = refunded`.
+* [ ] Validar `mp_refund_id` y `refund_amount`.
+* [ ] Validar que el appointment permanezca intacto.
+* [ ] Validar retry e idempotencia posterior.
+
 #### ⏳ Etapas pendientes
 
-* [ ] 8D — Reembolso manual
 * [ ] Evaluar reembolso automático opcional
 * [ ] Definir qué ve el cliente si pagó pero su reserva ya había vencido
 
@@ -390,7 +424,7 @@ master
 
 ## 📌 Ticket actual
 
-**Próximo:** Ticket 8D — Reembolso manual.
+**Actual:** Ticket 8D — Investigar HTTP 401 de Mercado Pago al crear refund TEST.
 
 ---
 

@@ -17,7 +17,6 @@ import { createClient } from '@/lib/supabase/server'
 
 import ResolveRetainedForm from './resolve-retained-form'
 import {
-  RefundIdentityDiagnosticForm,
   RequestRefundForm,
   VerifyRefundForm,
 } from './refund-action-form'
@@ -230,14 +229,6 @@ export default async function ReconciliationDetailPage({
                 reconciliationId={reconciliation.id}
                 allowRetry={isRefundErrorRetryable(reconciliation.last_error_code)}
               />
-              {process.env.VERCEL_ENV === 'preview' && (
-                <div className="mt-4 border-t border-red-200 pt-4">
-                  <p className="text-xs text-red-700">
-                    Diagnosticar identidad sólo realiza lecturas. La acción anterior puede emitir un reembolso si todas las verificaciones son válidas.
-                  </p>
-                  <RefundIdentityDiagnosticForm reconciliationId={reconciliation.id} />
-                </div>
-              )}
             </section>
           ) : reconciliation.status === 'refunded' ? (
             <section className="rounded-xl border border-green-200 bg-green-50 p-5">

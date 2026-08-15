@@ -4,7 +4,6 @@ import { revalidatePath } from 'next/cache'
 
 import {
   createMercadoPagoFullRefund,
-  getMercadoPagoCurrentUser,
   getMercadoPagoMerchantOrder,
   getMercadoPagoPayment,
   getMercadoPagoRefunds,
@@ -22,11 +21,6 @@ export interface ResolveReconciliationState {
 }
 
 export interface RefundReconciliationState {
-  success: boolean
-  message: string
-}
-
-export interface RefundIdentityDiagnosticState {
   success: boolean
   message: string
 }
@@ -56,104 +50,6 @@ type RefundErrorCode =
   | 'unknown_error'
 
 const AMOUNT_TOLERANCE = 0.005
-
-function logCredentialErrorDiagnostic(args: {
-  operation:
-    | 'load_credential'
-    | 'get_payment'
-    | 'get_merchant_order'
-    | 'list_refunds'
-    | 'create_refund'
-  httpStatus: number | null
-  paymentId: string
-}) {
-  console.warn('[mp-refund] credential error diagnostics', {
-    operation: args.operation,
-    httpStatus: args.httpStatus,
-    mappedError: 'credential_error',
-    paymentId: args.paymentId,
-  })
-}
-
-type RefundVerificationStage =
-  | 'appointment_validation'
-  | 'payment_validation'
-  | 'merchant_order_validation'
-  | 'refunds_validation'
-
-type RefundVerificationStopReason =
-  | 'financial_mismatch'
-  | 'missing_merchant_order'
-  | 'preference_mismatch'
-  | 'partial_refund_detected'
-  | 'payment_refunded_without_full_refund'
-  | 'verification_required'
-
-type RefundVerificationDiagnosticCode =
-  | 'payment_unavailable'
-  | 'payment_response_invalid'
-  | 'merchant_order_unavailable'
-  | 'merchant_order_response_invalid'
-  | 'refunds_unavailable'
-  | 'refunds_response_invalid'
-  | 'refund_response_invalid'
-  | 'payment_refunded_without_full_refund'
-  | 'no_new_refund_allowed'
-
-type CreateRefundDiagnosticCode =
-  | 'create_refund_invalid_token'
-  | 'create_refund_http_401'
-  | 'create_refund_http_403'
-  | 'create_refund_http_400_code_2063'
-  | 'create_refund_http_404_code_2024'
-  | 'create_refund_other_4xx'
-  | 'create_refund_ambiguous'
-
-function classifyCreateRefundDiagnostic(
-  responseReceived: boolean,
-  status: number | null,
-  errorCode: string | null
-): CreateRefundDiagnosticCode {
-  if (!responseReceived || status === null || status >= 500) {
-    return 'create_refund_ambiguous'
-  }
-  if (status === 401 && errorCode === '401') return 'create_refund_invalid_token'
-  if (status === 401) return 'create_refund_http_401'
-  if (status === 403) return 'create_refund_http_403'
-  if (status === 400 && errorCode === '2063') return 'create_refund_http_400_code_2063'
-  if (status === 404 && errorCode === '2024') return 'create_refund_http_404_code_2024'
-  if (status >= 400 && status < 500) return 'create_refund_other_4xx'
-  return 'create_refund_ambiguous'
-}
-
-function withPreviewCreateRefundDiagnostic(
-  result: RefundReconciliationState,
-  diagnosticCode: CreateRefundDiagnosticCode
-): RefundReconciliationState {
-  if (process.env.VERCEL_ENV !== 'preview') return result
-  return {
-    ...result,
-    message: `${result.message} [diag:${diagnosticCode}]`,
-  }
-}
-
-function logRefundVerificationCheckpoint(args: {
-  operation: 'get_payment' | 'get_merchant_order' | 'list_refunds'
-  httpStatus: number
-  paymentId: string
-  collectorIdPresent?: boolean
-  liveMode?: boolean | null
-}) {
-  console.info('[mp-refund] verification checkpoint', args)
-}
-
-function logRefundVerificationStopped(args: {
-  stage: RefundVerificationStage
-  reason: RefundVerificationStopReason
-  paymentId: string
-}) {
-  console.warn('[mp-refund] verification stopped', args)
-}
 
 function asNumericId(value: unknown): string {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value)
@@ -256,17 +152,11 @@ async function processRefundClaim(
     return { success: false, message: 'El servicio de pagos no está disponible.' }
   }
 
-  async function markVerificationRequired(
-    diagnosticCode: RefundVerificationDiagnosticCode | CreateRefundDiagnosticCode
-  ): Promise<RefundReconciliationState> {
-    const diagnosticSuffix = process.env.VERCEL_ENV === 'preview'
-      ? ` [diag:${diagnosticCode}]`
-      : ''
-
+  async function markVerificationRequired(): Promise<RefundReconciliationState> {
     if (!processingEstablished) {
       return {
         success: false,
-        message: `No se pudo verificar el estado actual. El intento anterior permanece registrado sin emitir un nuevo reembolso.${diagnosticSuffix}`,
+        message: 'No se pudo verificar el estado actual. El intento anterior permanece registrado sin emitir un nuevo reembolso.',
       }
     }
     const { error } = await admin.rpc('mark_payment_reconciliation_refund_verification_required', {
@@ -276,12 +166,12 @@ async function processRefundClaim(
     if (error) {
       return {
         success: false,
-        message: `No se pudo guardar el estado pendiente de verificación.${diagnosticSuffix}`,
+        message: 'No se pudo guardar el estado pendiente de verificación.',
       }
     }
     return {
       success: false,
-      message: `El resultado del reembolso está pendiente de verificación. No se enviará una nueva solicitud con otra clave.${diagnosticSuffix}`,
+      message: 'El resultado del reembolso está pendiente de verificación. No se enviará una nueva solicitud con otra clave.',
     }
   }
 
@@ -315,7 +205,7 @@ async function processRefundClaim(
       || !amountsMatch(refund.amount, claim.amount)
       || refund.status !== 'approved'
     ) {
-      return markVerificationRequired('refund_response_invalid')
+      return markVerificationRequired()
     }
 
     if (!await ensureProcessing()) {
@@ -352,11 +242,6 @@ async function processRefundClaim(
 
   const accessToken = credentialResult.data?.mp_access_token?.trim()
   if (credentialResult.error || !accessToken) {
-    logCredentialErrorDiagnostic({
-      operation: 'load_credential',
-      httpStatus: null,
-      paymentId: claim.mp_payment_id,
-    })
     return failRefund('credential_error')
   }
 
@@ -367,50 +252,19 @@ async function processRefundClaim(
     || !amountsMatch(appointment.deposit_amount, claim.amount)
     || appointment.mp_preference_id !== claim.mp_preference_id
   ) {
-    logRefundVerificationStopped({
-      stage: 'appointment_validation',
-      reason: 'financial_mismatch',
-      paymentId: claim.mp_payment_id,
-    })
     return failRefund('financial_mismatch')
   }
 
   const paymentResult = await getMercadoPagoPayment(accessToken, claim.mp_payment_id)
   if (!paymentResult.responseReceived || paymentResult.status === null || paymentResult.status >= 500) {
-    logRefundVerificationStopped({
-      stage: 'payment_validation',
-      reason: 'verification_required',
-      paymentId: claim.mp_payment_id,
-    })
-    return markVerificationRequired('payment_unavailable')
+    return markVerificationRequired()
   }
   if (!paymentResult.ok || !paymentResult.data) {
     const errorCode = classifyMercadoPagoRefundError(paymentResult.status, paymentResult.errorCode)
-    if (errorCode === 'credential_error') {
-      logCredentialErrorDiagnostic({
-        operation: 'get_payment',
-        httpStatus: paymentResult.status,
-        paymentId: claim.mp_payment_id,
-      })
-    }
-    if (!errorCode) {
-      logRefundVerificationStopped({
-        stage: 'payment_validation',
-        reason: 'verification_required',
-        paymentId: claim.mp_payment_id,
-      })
-    }
-    return errorCode ? failRefund(errorCode) : markVerificationRequired('payment_response_invalid')
+    return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
 
   const payment = paymentResult.data
-  logRefundVerificationCheckpoint({
-    operation: 'get_payment',
-    httpStatus: paymentResult.status,
-    paymentId: claim.mp_payment_id,
-    collectorIdPresent: payment.collector_id != null,
-    liveMode: typeof payment.live_mode === 'boolean' ? payment.live_mode : null,
-  })
   const paymentStatus = typeof payment.status === 'string' ? payment.status : ''
   const externalReference = typeof payment.external_reference === 'string'
     ? payment.external_reference.trim()
@@ -426,111 +280,40 @@ async function processRefundClaim(
     || paidCurrency !== claim.currency
     || (paymentStatus !== 'approved' && paymentStatus !== 'refunded')
   ) {
-    logRefundVerificationStopped({
-      stage: 'payment_validation',
-      reason: 'financial_mismatch',
-      paymentId: claim.mp_payment_id,
-    })
     return failRefund('financial_mismatch')
   }
 
   const merchantOrderId = asNumericId(payment.order?.id)
   if (!merchantOrderId) {
-    logRefundVerificationStopped({
-      stage: 'merchant_order_validation',
-      reason: 'missing_merchant_order',
-      paymentId: claim.mp_payment_id,
-    })
     return failRefund('financial_mismatch')
   }
   if (!claim.mp_preference_id) {
-    logRefundVerificationStopped({
-      stage: 'merchant_order_validation',
-      reason: 'preference_mismatch',
-      paymentId: claim.mp_payment_id,
-    })
     return failRefund('financial_mismatch')
   }
 
   const merchantOrderResult = await getMercadoPagoMerchantOrder(accessToken, merchantOrderId)
   if (!merchantOrderResult.responseReceived || merchantOrderResult.status === null || merchantOrderResult.status >= 500) {
-    logRefundVerificationStopped({
-      stage: 'merchant_order_validation',
-      reason: 'verification_required',
-      paymentId: claim.mp_payment_id,
-    })
-    return markVerificationRequired('merchant_order_unavailable')
+    return markVerificationRequired()
   }
   if (!merchantOrderResult.ok || !merchantOrderResult.data) {
     const errorCode = classifyMercadoPagoRefundError(
       merchantOrderResult.status,
       merchantOrderResult.errorCode
     )
-    if (errorCode === 'credential_error') {
-      logCredentialErrorDiagnostic({
-        operation: 'get_merchant_order',
-        httpStatus: merchantOrderResult.status,
-        paymentId: claim.mp_payment_id,
-      })
-    }
-    if (!errorCode) {
-      logRefundVerificationStopped({
-        stage: 'merchant_order_validation',
-        reason: 'verification_required',
-        paymentId: claim.mp_payment_id,
-      })
-    }
-    return errorCode
-      ? failRefund(errorCode)
-      : markVerificationRequired('merchant_order_response_invalid')
+    return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
-  logRefundVerificationCheckpoint({
-    operation: 'get_merchant_order',
-    httpStatus: merchantOrderResult.status,
-    paymentId: claim.mp_payment_id,
-  })
   if (merchantOrderResult.data.preference_id !== claim.mp_preference_id) {
-    logRefundVerificationStopped({
-      stage: 'merchant_order_validation',
-      reason: 'preference_mismatch',
-      paymentId: claim.mp_payment_id,
-    })
     return failRefund('financial_mismatch')
   }
 
   const refundsResult = await getMercadoPagoRefunds(accessToken, claim.mp_payment_id)
   if (!refundsResult.responseReceived || refundsResult.status === null || refundsResult.status >= 500) {
-    logRefundVerificationStopped({
-      stage: 'refunds_validation',
-      reason: 'verification_required',
-      paymentId: claim.mp_payment_id,
-    })
-    return markVerificationRequired('refunds_unavailable')
+    return markVerificationRequired()
   }
   if (!refundsResult.ok || !refundsResult.data) {
     const errorCode = classifyMercadoPagoRefundError(refundsResult.status, refundsResult.errorCode)
-    if (errorCode === 'credential_error') {
-      logCredentialErrorDiagnostic({
-        operation: 'list_refunds',
-        httpStatus: refundsResult.status,
-        paymentId: claim.mp_payment_id,
-      })
-    }
-    if (!errorCode) {
-      logRefundVerificationStopped({
-        stage: 'refunds_validation',
-        reason: 'verification_required',
-        paymentId: claim.mp_payment_id,
-      })
-    }
-    return errorCode ? failRefund(errorCode) : markVerificationRequired('refunds_response_invalid')
+    return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
-
-  logRefundVerificationCheckpoint({
-    operation: 'list_refunds',
-    httpStatus: refundsResult.status,
-    paymentId: claim.mp_payment_id,
-  })
 
   const approvedRefunds = refundsResult.data.filter(refund => refund.status === 'approved')
   const existingFullRefund = approvedRefunds.find(refund =>
@@ -539,29 +322,14 @@ async function processRefundClaim(
   )
   if (existingFullRefund) return completeRefund(existingFullRefund)
   if (approvedRefunds.length > 0) {
-    logRefundVerificationStopped({
-      stage: 'refunds_validation',
-      reason: 'partial_refund_detected',
-      paymentId: claim.mp_payment_id,
-    })
     return failRefund('partial_refund_detected')
   }
   if (paymentStatus === 'refunded') {
-    logRefundVerificationStopped({
-      stage: 'refunds_validation',
-      reason: 'payment_refunded_without_full_refund',
-      paymentId: claim.mp_payment_id,
-    })
-    return markVerificationRequired('payment_refunded_without_full_refund')
+    return markVerificationRequired()
   }
 
   if (!allowNewRefund) {
-    logRefundVerificationStopped({
-      stage: 'refunds_validation',
-      reason: 'verification_required',
-      paymentId: claim.mp_payment_id,
-    })
-    return markVerificationRequired('no_new_refund_allowed')
+    return markVerificationRequired()
   }
 
   if (!await ensureProcessing()) {
@@ -574,32 +342,15 @@ async function processRefundClaim(
     claim.refund_idempotency_key
   )
 
-  const createRefundDiagnostic = classifyCreateRefundDiagnostic(
-    refundResult.responseReceived,
-    refundResult.status,
-    refundResult.errorCode
-  )
-
   if (!refundResult.responseReceived || refundResult.status === null || refundResult.status >= 500) {
-    return markVerificationRequired(createRefundDiagnostic)
+    return markVerificationRequired()
   }
   if (!refundResult.ok || !refundResult.data) {
     if (refundResult.errorCode === '4296') {
-      return markVerificationRequired(createRefundDiagnostic)
+      return markVerificationRequired()
     }
     const errorCode = classifyMercadoPagoRefundError(refundResult.status, refundResult.errorCode)
-    if (errorCode === 'credential_error') {
-      logCredentialErrorDiagnostic({
-        operation: 'create_refund',
-        httpStatus: refundResult.status,
-        paymentId: claim.mp_payment_id,
-      })
-    }
-    if (!errorCode) return markVerificationRequired(createRefundDiagnostic)
-    return withPreviewCreateRefundDiagnostic(
-      await failRefund(errorCode),
-      createRefundDiagnostic
-    )
+    return errorCode ? failRefund(errorCode) : markVerificationRequired()
   }
 
   return completeRefund(refundResult.data)
@@ -656,79 +407,6 @@ export async function verifyOrRetryPaymentReconciliationRefund(
   const result = await processRefundClaim(prepared.supabase, prepared.claim, retryable)
   revalidateReconciliation(reconciliationId)
   return result
-}
-
-export async function diagnosePaymentReconciliationIdentity(
-  reconciliationId: string,
-  _previousState: RefundIdentityDiagnosticState
-): Promise<RefundIdentityDiagnosticState> {
-  void _previousState
-
-  if (process.env.VERCEL_ENV !== 'preview') {
-    return { success: false, message: 'Diagnóstico no disponible.' }
-  }
-
-  if (!UUID_PATTERN.test(reconciliationId)) {
-    return { success: false, message: '[diag:token_identity_unavailable]' }
-  }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { success: false, message: '[diag:token_identity_unavailable]' }
-  }
-
-  const { data: reconciliation, error: reconciliationError } = await supabase
-    .from('payment_reconciliations')
-    .select('barbershop_id, mp_payment_id')
-    .eq('id', reconciliationId)
-    .maybeSingle()
-
-  if (reconciliationError || !reconciliation) {
-    return { success: false, message: '[diag:token_identity_unavailable]' }
-  }
-
-  let admin: ReturnType<typeof createAdminClient>
-  try {
-    admin = createAdminClient()
-  } catch {
-    return { success: false, message: '[diag:token_identity_unavailable]' }
-  }
-
-  const { data: credential, error: credentialError } = await admin
-    .from('barbershop_payment_credentials')
-    .select('mp_access_token')
-    .eq('barbershop_id', reconciliation.barbershop_id)
-    .maybeSingle()
-
-  const accessToken = credential?.mp_access_token?.trim()
-  if (credentialError || !accessToken) {
-    return { success: false, message: '[diag:token_identity_unavailable]' }
-  }
-
-  const [currentUserResult, paymentResult] = await Promise.all([
-    getMercadoPagoCurrentUser(accessToken),
-    getMercadoPagoPayment(accessToken, reconciliation.mp_payment_id),
-  ])
-
-  const tokenOwnerId = asNumericId(currentUserResult.data?.id)
-  const collectorId = asNumericId(paymentResult.data?.collector_id)
-  if (
-    !currentUserResult.ok
-    || !paymentResult.ok
-    || !tokenOwnerId
-    || !collectorId
-  ) {
-    return { success: false, message: '[diag:token_identity_unavailable]' }
-  }
-
-  const matches = tokenOwnerId === collectorId
-  return {
-    success: matches,
-    message: matches
-      ? '[diag:token_owner_matches_collector]'
-      : '[diag:token_owner_mismatch]',
-  }
 }
 
 export async function resolveReconciliationRetained(
