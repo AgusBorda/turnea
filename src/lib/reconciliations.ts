@@ -42,6 +42,7 @@ const REFUND_ERROR_MESSAGES: Record<string, string> = {
 const RETRYABLE_REFUND_ERROR_CODES = new Set([
   'insufficient_balance',
   'temporary_error',
+  'credential_error',
 ])
 
 export function getReconciliationReasonLabel(reason: string): string {
