@@ -100,6 +100,43 @@ type RefundVerificationDiagnosticCode =
   | 'payment_refunded_without_full_refund'
   | 'no_new_refund_allowed'
 
+type CreateRefundDiagnosticCode =
+  | 'create_refund_invalid_token'
+  | 'create_refund_http_401'
+  | 'create_refund_http_403'
+  | 'create_refund_http_400_code_2063'
+  | 'create_refund_http_404_code_2024'
+  | 'create_refund_other_4xx'
+  | 'create_refund_ambiguous'
+
+function classifyCreateRefundDiagnostic(
+  responseReceived: boolean,
+  status: number | null,
+  errorCode: string | null
+): CreateRefundDiagnosticCode {
+  if (!responseReceived || status === null || status >= 500) {
+    return 'create_refund_ambiguous'
+  }
+  if (status === 401 && errorCode === '401') return 'create_refund_invalid_token'
+  if (status === 401) return 'create_refund_http_401'
+  if (status === 403) return 'create_refund_http_403'
+  if (status === 400 && errorCode === '2063') return 'create_refund_http_400_code_2063'
+  if (status === 404 && errorCode === '2024') return 'create_refund_http_404_code_2024'
+  if (status >= 400 && status < 500) return 'create_refund_other_4xx'
+  return 'create_refund_ambiguous'
+}
+
+function withPreviewCreateRefundDiagnostic(
+  result: RefundReconciliationState,
+  diagnosticCode: CreateRefundDiagnosticCode
+): RefundReconciliationState {
+  if (process.env.VERCEL_ENV !== 'preview') return result
+  return {
+    ...result,
+    message: `${result.message} [diag:${diagnosticCode}]`,
+  }
+}
+
 function logRefundVerificationCheckpoint(args: {
   operation: 'get_payment' | 'get_merchant_order' | 'list_refunds'
   httpStatus: number
@@ -220,7 +257,7 @@ async function processRefundClaim(
   }
 
   async function markVerificationRequired(
-    diagnosticCode: RefundVerificationDiagnosticCode
+    diagnosticCode: RefundVerificationDiagnosticCode | CreateRefundDiagnosticCode
   ): Promise<RefundReconciliationState> {
     const diagnosticSuffix = process.env.VERCEL_ENV === 'preview'
       ? ` [diag:${diagnosticCode}]`
@@ -537,12 +574,18 @@ async function processRefundClaim(
     claim.refund_idempotency_key
   )
 
+  const createRefundDiagnostic = classifyCreateRefundDiagnostic(
+    refundResult.responseReceived,
+    refundResult.status,
+    refundResult.errorCode
+  )
+
   if (!refundResult.responseReceived || refundResult.status === null || refundResult.status >= 500) {
-    return markVerificationRequired('refund_response_invalid')
+    return markVerificationRequired(createRefundDiagnostic)
   }
   if (!refundResult.ok || !refundResult.data) {
     if (refundResult.errorCode === '4296') {
-      return markVerificationRequired('refund_response_invalid')
+      return markVerificationRequired(createRefundDiagnostic)
     }
     const errorCode = classifyMercadoPagoRefundError(refundResult.status, refundResult.errorCode)
     if (errorCode === 'credential_error') {
@@ -552,7 +595,11 @@ async function processRefundClaim(
         paymentId: claim.mp_payment_id,
       })
     }
-    return errorCode ? failRefund(errorCode) : markVerificationRequired('refund_response_invalid')
+    if (!errorCode) return markVerificationRequired(createRefundDiagnostic)
+    return withPreviewCreateRefundDiagnostic(
+      await failRefund(errorCode),
+      createRefundDiagnostic
+    )
   }
 
   return completeRefund(refundResult.data)
