@@ -307,33 +307,46 @@ La base de datos acepta cualquier identificador IANA válido, aunque Settings of
 
 #### 🚧 Etapa 8D — Reembolso manual
 
-**Estado:** Implementada y validada parcialmente en DEV.
+**Estado:** Implementada parcialmente / bloqueada en validación E2E.
+
+**Implementado:**
+* Refund total manual owner-only.
+* Idempotency key persistida antes de la solicitud HTTP.
+* Retry seguro con la misma idempotency key.
+* Verificación oficial de payment, merchant order y refunds antes del POST.
+* Detección y conciliación local de un refund existente.
+* Flujos de complete, fail y `verification_required`.
+* UI de solicitud, retry y verificación.
+* Límites de ownership y service role.
+* El appointment asociado permanece intacto.
 
 **Validado en DEV:**
 * Schema y RPCs de reembolso.
-* Acceso owner-only y límites de service role.
+* Ownership y acceso owner-only.
 * Persistencia y reutilización de la idempotency key.
 * Protección frente a doble claim.
 * Complete idempotente y detección de conflictos de integridad.
-* Flujos de fail, retry y `verification_required`.
+* Fallos seguros, retry y `verification_required`.
+* Los retries no duplican la intención de reembolso.
 * UI de solicitud y verificación de reembolso.
-* El appointment asociado permanece intacto.
+
+**Bloqueo E2E:**
+* `POST /v1/payments/{payment_id}/refunds` devuelve HTTP 401 en TEST.
+* GET payment, merchant order y refunds funcionan correctamente.
 * El owner del Access Token coincide con el collector del payment.
-* Las lecturas de payment, merchant order y refunds son válidas.
+* Las validaciones de appointment, payment, preference, monto y moneda son correctas.
+* No existe un refund aprobado ni parcial previo.
+* La causa exacta del rechazo de Mercado Pago todavía no está resuelta.
+* Ningún refund TEST llegó todavía a `status = refunded`.
 
-**Pendiente:**
-* [ ] Validar un refund TEST exitoso end-to-end.
+Este bloqueo debe resolverse antes de considerar 8D production-ready.
 
-**Bloqueo actual:**
-* `POST /v1/payments/{payment_id}/refunds` devuelve HTTP 401 en TEST, aunque el token puede leer el payment, su owner coincide con el collector y las validaciones de payment, preference y refunds son correctas.
-* La causa raíz todavía no está demostrada. Este bloqueo debe resolverse antes de considerar 8D production-ready.
+##### ⏳ 8D.1 — Resolver HTTP 401 de Mercado Pago al crear refund TEST
 
-**Subtarea — Investigar HTTP 401 de Mercado Pago al crear refund TEST:**
-* [ ] Crear un payment TEST nuevo específicamente para refund.
-* [ ] Confirmar seller y buyer TEST correctos.
-* [ ] Confirmar saldo y condiciones de la cuenta TEST.
-* [ ] Revisar configuración, aplicación y credencial vigente.
+* [ ] Revisar configuración y condiciones de la cuenta TEST.
 * [ ] Revisar documentación o soporte oficial de Mercado Pago.
+* [ ] Crear un payment TEST nuevo dedicado específicamente a refund, si hace falta.
+* [ ] Confirmar seller y buyer TEST correctos.
 * [ ] Ejecutar un único refund TEST.
 * [ ] Validar `status = refunded`.
 * [ ] Validar `mp_refund_id` y `refund_amount`.
@@ -424,7 +437,9 @@ master
 
 ## 📌 Ticket actual
 
-**Actual:** Ticket 8D — Investigar HTTP 401 de Mercado Pago al crear refund TEST.
+**Actual:** Ticket 8D.1 — Investigación HTTP 401 en refunds TEST.
+
+Las etapas independientes definidas en el roadmap pueden avanzar en paralelo, sin olvidar este bloqueo antes de considerar 8D production-ready.
 
 ---
 
