@@ -429,6 +429,32 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 
 **Estado:** implementado localmente; pendiente de validación UI en DEV/Preview.
 
+#### ✅ Etapa 9F — Visual polish de Disponibilidad
+
+* [x] 9F.1 — Foundations visuales reutilizables
+* [x] 9F.2 — Nueva estructura de la pantalla de horarios
+* [x] 9F.3 — Polish visual de cards, formularios e inputs
+* [x] 9F.4A — Editor semanal y TimePicker
+* [x] 9F.4B — DatePicker civil propio
+* [x] 9F.4C — TimePicker en ausencias y bloqueos
+* [x] 9F.5 — Lista compacta de próximos bloqueos y micro-polish final
+
+**Resultado:**
+* La pantalla de Disponibilidad pasa a ser la referencia visual inicial del “nuevo Turnea”.
+* El editor semanal usa selector de días, panel único y controles de hora propios sin cambiar el contrato de persistencia.
+* Ausencias, bloqueos y vacaciones usan fechas/horas civiles y feedback visual consistente.
+* Los próximos bloqueos usan una lista compacta, acciones discretas y agrupación puramente presentacional de vacaciones consecutivas.
+* La eliminación continúa siendo individual y conserva la confirmación destructiva existente.
+* La experiencia fue revisada visualmente en mobile y desktop.
+
+**Deuda técnica fuera del alcance de 9F:**
+* Hacer atómico el guardado semanal, que actualmente conserva el flujo `delete + insert` existente.
+* Migrar la convención de Next.js de `middleware` a `proxy`.
+* Resolver por separado las vulnerabilidades informadas por `npm audit` y la actualización de Next.js.
+* Extender gradualmente este lenguaje visual a Agenda, Servicios, Barberos, Configuración y Conciliaciones.
+
+**Estado:** ✅ Completado
+
 #### ⏳ Etapas pendientes
 
 * [ ] 9D — Agenda y Booking

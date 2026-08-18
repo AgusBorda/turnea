@@ -1,6 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { getBarbershopToday } from '@/lib/datetime'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
+import Card from '@/components/ui/card'
+import SectionHeader from '@/components/ui/section-header'
 import AvailabilityManager, { type UpcomingBlockedSlot } from './availability-manager'
 import ScheduleEditor from './schedule-editor'
 
@@ -53,15 +57,47 @@ export default async function BarberSchedulePage({ params }: PageProps) {
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-2">Horarios de {barber.name}</h1>
-      <p className="text-[var(--muted)] mb-6">Configurá los días y horarios de atención.</p>
-      <ScheduleEditor barberId={id} initialSchedules={schedulesResult.data || []} />
-      <AvailabilityManager
-        barberId={id}
-        today={today}
-        initialBlockedSlots={(blockedSlotsResult.data || []) as UpcomingBlockedSlot[]}
-      />
+    <div className="mx-auto w-full max-w-3xl">
+      <Link
+        href="/dashboard/barbers"
+        className="inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        Barberos
+      </Link>
+
+      <header className="mt-3">
+        <h1 className="text-2xl font-bold tracking-tight">Disponibilidad de {barber.name}</h1>
+        <p className="mt-2 text-sm text-[var(--muted)] sm:text-base">
+          Definí su horario semanal y las ausencias programadas.
+        </p>
+      </header>
+
+      <div className="mt-8 space-y-10">
+        <section className="space-y-4">
+          <SectionHeader
+            title="Horario semanal"
+            description="Configurá los días y horarios habituales de atención."
+          />
+          <Card>
+            <ScheduleEditor barberId={id} initialSchedules={schedulesResult.data || []} />
+          </Card>
+        </section>
+
+        <section className="space-y-4">
+          <SectionHeader
+            title="Ausencias y bloqueos"
+            description="Bloqueá fechas u horarios en los que el barbero no estará disponible."
+          />
+          <Card>
+            <AvailabilityManager
+              barberId={id}
+              today={today}
+              initialBlockedSlots={(blockedSlotsResult.data || []) as UpcomingBlockedSlot[]}
+            />
+          </Card>
+        </section>
+      </div>
     </div>
   )
 }

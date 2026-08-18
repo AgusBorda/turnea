@@ -1,10 +1,22 @@
 'use client'
 
 import { useActionState, useCallback, useEffect, useState, useTransition } from 'react'
-import { CalendarOff, Clock3, Palmtree, Trash2 } from 'lucide-react'
+import { CalendarOff, ChevronDown, Clock3, MoreHorizontal, Palmtree, Trash2 } from 'lucide-react'
+import {
+  Button as AriaButton,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Popover,
+} from 'react-aria-components'
 
+import Button from '@/components/ui/button'
+import DatePicker from '@/components/ui/date-picker'
+import FormField from '@/components/ui/form-field'
+import { inputClassName } from '@/components/ui/input-styles'
+import TimePicker from '@/components/ui/time-picker'
 import { ToastViewport, useToast, type ToastTone } from '@/components/ui/toast'
-import { formatLocalDate } from '@/lib/datetime'
+import { addCalendarDays, formatLocalDate } from '@/lib/datetime'
 import {
   createFullDayBlock,
   createPartialBlock,
@@ -36,8 +48,6 @@ const INITIAL_STATE: BlockedSlotActionState = {
   feedback: 'inline',
   tone: 'error',
 }
-const INPUT_CLASS = 'w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm focus:border-[var(--primary)] focus:outline-none'
-
 function Feedback({ state }: { state: BlockedSlotActionState }) {
   if (!state.message || state.feedback !== 'inline') return null
   return (
@@ -89,14 +99,35 @@ function DeleteBlockButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-      >
-        <Trash2 className="h-4 w-4" />
-        Eliminar
-      </button>
+      <MenuTrigger>
+        <AriaButton
+          aria-label="Opciones del bloqueo"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
+        >
+          <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
+        </AriaButton>
+        <Popover
+          placement="bottom end"
+          offset={8}
+          className="z-[60] rounded-xl border border-[var(--border)] bg-white p-1.5 shadow-[0_14px_36px_rgba(15,23,42,0.2)] outline-none"
+        >
+          <Menu
+            aria-label="Opciones del bloqueo"
+            onAction={key => {
+              if (key === 'delete') setIsOpen(true)
+            }}
+            className="outline-none"
+          >
+            <MenuItem
+              id="delete"
+              className="flex min-h-10 cursor-default items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 outline-none transition-colors data-[focused]:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              Eliminar bloqueo
+            </MenuItem>
+          </Menu>
+        </Popover>
+      </MenuTrigger>
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -152,8 +183,218 @@ function DeleteBlockButton({
   )
 }
 
+interface BlockedSlotGroup {
+  id: string
+  blocks: UpcomingBlockedSlot[]
+}
+
+function normalizeReason(reason: string | null) {
+  return (reason ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-AR')
+}
+
+function groupBlockedSlots(blockedSlots: UpcomingBlockedSlot[]): BlockedSlotGroup[] {
+  const sorted = [...blockedSlots].sort((a, b) => (
+    a.date.localeCompare(b.date)
+    || (a.start_time ?? '').localeCompare(b.start_time ?? '')
+  ))
+  const groups: BlockedSlotGroup[] = []
+
+  for (const block of sorted) {
+    const previousGroup = groups.at(-1)
+    const previousBlock = previousGroup?.blocks.at(-1)
+    const continuesVacation = Boolean(
+      block.all_day
+      && previousBlock?.all_day
+      && block.date === addCalendarDays(previousBlock.date, 1)
+      && normalizeReason(block.reason) === normalizeReason(previousBlock.reason)
+    )
+
+    if (continuesVacation && previousGroup) previousGroup.blocks.push(block)
+    else groups.push({ id: block.id, blocks: [block] })
+  }
+
+  return groups
+}
+
+function getDateBadge(date: string, endDate?: string) {
+  const day = String(Number(date.slice(8, 10)))
+  const month = formatLocalDate(date, { month: 'short' }).replace('.', '').toLocaleUpperCase('es-AR')
+  const sameMonth = endDate?.slice(0, 7) === date.slice(0, 7)
+  const endDay = endDate && sameMonth ? String(Number(endDate.slice(8, 10))) : null
+  return { day: endDay ? `${day}–${endDay}` : day, month }
+}
+
+function DateBadge({ date, endDate }: { date: string; endDate?: string }) {
+  const badge = getDateBadge(date, endDate)
+  const fullLabel = endDate
+    ? `${formatLocalDate(date, { day: 'numeric', month: 'long' })} al ${formatLocalDate(endDate, { day: 'numeric', month: 'long', year: 'numeric' })}`
+    : formatLocalDate(date, { day: 'numeric', month: 'long', year: 'numeric' })
+
+  return (
+    <div
+      aria-label={fullLabel}
+      className={`flex h-13 shrink-0 flex-col items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--secondary)] text-center ${endDate ? 'w-14' : 'w-12'}`}
+    >
+      <span className={`${endDate ? 'text-sm' : 'text-lg'} font-bold leading-none tabular-nums`}>{badge.day}</span>
+      <span className="mt-1 text-[10px] font-bold leading-none tracking-wide text-[var(--muted)]">{badge.month}</span>
+    </div>
+  )
+}
+
+function BlockedSlotRow({
+  barberId,
+  block,
+  onToast,
+  nested = false,
+}: {
+  barberId: string
+  block: UpcomingBlockedSlot
+  onToast: (message: string, tone: ToastTone) => void
+  nested?: boolean
+}) {
+  return (
+    <div className={`flex min-w-0 items-center gap-3 ${nested ? 'py-2.5' : 'p-3 sm:p-4'}`}>
+      {nested ? (
+        <div className="w-12 shrink-0 text-center text-xs font-semibold text-[var(--muted)]">
+          {formatLocalDate(block.date, { day: 'numeric', month: 'short' })}
+        </div>
+      ) : (
+        <DateBadge date={block.date} />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-1.5 text-sm font-semibold leading-5">
+          {block.all_day ? (
+            <CalendarOff className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+          ) : (
+            <Clock3 className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
+          )}
+          {block.all_day
+            ? 'Día completo'
+            : `${block.start_time?.slice(0, 5)} — ${block.end_time?.slice(0, 5)}`}
+        </p>
+        {block.reason && (
+          <p className="mt-0.5 truncate text-sm text-[var(--muted)]" title={block.reason}>
+            {block.reason}
+          </p>
+        )}
+      </div>
+
+      <DeleteBlockButton barberId={barberId} block={block} onToast={onToast} />
+    </div>
+  )
+}
+
+function UpcomingBlockedSlots({
+  barberId,
+  blockedSlots,
+  onToast,
+}: {
+  barberId: string
+  blockedSlots: UpcomingBlockedSlot[]
+  onToast: (message: string, tone: ToastTone) => void
+}) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
+  const groups = groupBlockedSlots(blockedSlots)
+
+  if (groups.length === 0) {
+    return (
+      <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+          <CalendarOff className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <p className="mt-3 text-sm font-semibold">No hay ausencias programadas</p>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          Cuando agregues un bloqueo o vacaciones, aparecerán acá.
+        </p>
+      </div>
+    )
+  }
+
+  function toggleGroup(groupId: string) {
+    setExpandedGroups(previous => {
+      const next = new Set(previous)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
+
+  return (
+    <ul className="mt-3 divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-white">
+      {groups.map(group => {
+        const first = group.blocks[0]
+        const last = group.blocks.at(-1)!
+        const isGroup = group.blocks.length > 1
+        const isExpanded = expandedGroups.has(group.id)
+
+        return (
+          <li key={group.id}>
+            {isGroup ? (
+              <div className="p-3 sm:p-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <DateBadge date={first.date} endDate={last.date} />
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-1.5 text-sm font-semibold">
+                      <CalendarOff className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                      {group.blocks.length} días · Día completo
+                    </p>
+                    {first.reason && (
+                      <p className="mt-0.5 truncate text-sm text-[var(--muted)]" title={first.reason}>
+                        {first.reason}
+                      </p>
+                    )}
+                    {first.date.slice(0, 7) !== last.date.slice(0, 7) && (
+                      <p className="mt-0.5 text-xs text-[var(--muted)]">
+                        Hasta {formatLocalDate(last.date, { day: 'numeric', month: 'short' })}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.id)}
+                    aria-expanded={isExpanded}
+                    aria-controls={`blocked-group-${group.id}`}
+                    aria-label={isExpanded ? 'Ocultar días de las vacaciones' : `Ver ${group.blocks.length} días de las vacaciones`}
+                    className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                  >
+                    <span className="hidden sm:inline">{isExpanded ? 'Ocultar' : `Ver ${group.blocks.length} días`}</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+                  </button>
+                </div>
+
+                {isExpanded && (
+                  <div id={`blocked-group-${group.id}`} className="mt-3 divide-y divide-[var(--border)] rounded-lg bg-[var(--secondary)]/60 px-2">
+                    {group.blocks.map(block => (
+                      <BlockedSlotRow
+                        key={block.id}
+                        barberId={barberId}
+                        block={block}
+                        onToast={onToast}
+                        nested
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <BlockedSlotRow barberId={barberId} block={first} onToast={onToast} />
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export default function AvailabilityManager({ barberId, today, initialBlockedSlots }: Props) {
   const [mode, setMode] = useState<FormMode>('full-day')
+  const [fullDayDate, setFullDayDate] = useState<string | null>(null)
+  const [partialDate, setPartialDate] = useState<string | null>(null)
+  const [partialStartTime, setPartialStartTime] = useState<string | null>(null)
+  const [partialEndTime, setPartialEndTime] = useState<string | null>(null)
+  const [vacationDateFrom, setVacationDateFrom] = useState<string | null>(null)
+  const [vacationDateTo, setVacationDateTo] = useState<string | null>(null)
   const { toasts, showToast, dismissToast } = useToast()
 
   const notify = useCallback((message: string, tone: ToastTone) => {
@@ -167,6 +408,7 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
     const result = await createFullDayBlock(barberId, previousState, formData)
     if (result.feedback === 'toast') {
       notify(result.message, result.tone)
+      if (result.success) setFullDayDate(null)
       return INITIAL_STATE
     }
     return result
@@ -179,6 +421,11 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
     const result = await createPartialBlock(barberId, previousState, formData)
     if (result.feedback === 'toast') {
       notify(result.message, result.tone)
+      if (result.success) {
+        setPartialDate(null)
+        setPartialStartTime(null)
+        setPartialEndTime(null)
+      }
       return INITIAL_STATE
     }
     return result
@@ -191,6 +438,10 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
     const result = await createVacation(barberId, previousState, formData)
     if (result.feedback === 'toast') {
       notify(result.message, result.tone)
+      if (result.success) {
+        setVacationDateFrom(null)
+        setVacationDateTo(null)
+      }
       return INITIAL_STATE
     }
     return result
@@ -216,14 +467,9 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
   ]
 
   return (
-    <section className="mt-10 max-w-3xl border-t border-[var(--border)] pt-8">
+    <div>
       <ToastViewport toasts={toasts} onDismiss={dismissToast} />
-      <h2 className="text-xl font-bold">Ausencias y bloqueos</h2>
-      <p className="mt-1 text-sm text-[var(--muted)]">
-        Bloqueá fechas u horarios en los que el barbero no estará disponible.
-      </p>
-
-      <div className="mt-5 grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-3">
         {modes.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -241,40 +487,72 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
         ))}
       </div>
 
-      <div className="mt-4 rounded-xl border border-[var(--border)] bg-white p-4 sm:p-5">
+      <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 sm:p-5">
         {mode === 'full-day' && (
           <form action={fullDayAction} className="space-y-4">
             <h3 className="font-semibold">Bloquear un día completo</h3>
-            <label className="block text-sm font-medium">
-              Fecha
-              <input className={`${INPUT_CLASS} mt-1`} type="date" name="date" min={today} required />
-            </label>
-            <ReasonField />
+            <FormField label="Fecha" htmlFor="full-day-date">
+              <DatePicker
+                id="full-day-date"
+                name="date"
+                value={fullDayDate}
+                onChange={setFullDayDate}
+                minDate={today}
+                required
+                ariaLabel="Fecha del bloqueo de día completo"
+              />
+            </FormField>
+            <ReasonField id="full-day-reason" />
             <Feedback state={fullDayState} />
-            <SubmitButton pending={fullDayPending} label="Bloquear día" />
+            <SubmitButton pending={fullDayPending} disabled={!fullDayDate} label="Bloquear día" />
           </form>
         )}
 
         {mode === 'partial' && (
           <form action={partialAction} className="space-y-4">
             <h3 className="font-semibold">Bloquear una franja horaria</h3>
-            <label className="block text-sm font-medium">
-              Fecha
-              <input className={`${INPUT_CLASS} mt-1`} type="date" name="date" min={today} required />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm font-medium">
-                Desde
-                <input className={`${INPUT_CLASS} mt-1`} type="time" name="startTime" required />
-              </label>
-              <label className="block text-sm font-medium">
-                Hasta
-                <input className={`${INPUT_CLASS} mt-1`} type="time" name="endTime" required />
-              </label>
+            <FormField label="Fecha" htmlFor="partial-date">
+              <DatePicker
+                id="partial-date"
+                name="date"
+                value={partialDate}
+                onChange={setPartialDate}
+                minDate={today}
+                required
+                ariaLabel="Fecha del bloqueo horario"
+              />
+            </FormField>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField label="Desde" htmlFor="partial-start-time">
+                <TimePicker
+                  id="partial-start-time"
+                  name="startTime"
+                  value={partialStartTime}
+                  onChange={setPartialStartTime}
+                  stepMinutes={1}
+                  required
+                  ariaLabel="Hora de inicio del bloqueo"
+                />
+              </FormField>
+              <FormField label="Hasta" htmlFor="partial-end-time">
+                <TimePicker
+                  id="partial-end-time"
+                  name="endTime"
+                  value={partialEndTime}
+                  onChange={setPartialEndTime}
+                  stepMinutes={1}
+                  required
+                  ariaLabel="Hora de fin del bloqueo"
+                />
+              </FormField>
             </div>
-            <ReasonField />
+            <ReasonField id="partial-reason" />
             <Feedback state={partialState} />
-            <SubmitButton pending={partialPending} label="Bloquear horario" />
+            <SubmitButton
+              pending={partialPending}
+              disabled={!partialDate || !partialStartTime || !partialEndTime}
+              label="Bloquear horario"
+            />
           </form>
         )}
 
@@ -282,90 +560,83 @@ export default function AvailabilityManager({ barberId, today, initialBlockedSlo
           <form action={vacationAction} className="space-y-4">
             <h3 className="font-semibold">Cargar vacaciones</h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm font-medium">
-                Desde
-                <input className={`${INPUT_CLASS} mt-1`} type="date" name="dateFrom" min={today} required />
-              </label>
-              <label className="block text-sm font-medium">
-                Hasta
-                <input className={`${INPUT_CLASS} mt-1`} type="date" name="dateTo" min={today} required />
-              </label>
+              <FormField label="Desde" htmlFor="vacation-date-from">
+                <DatePicker
+                  id="vacation-date-from"
+                  name="dateFrom"
+                  value={vacationDateFrom}
+                  onChange={setVacationDateFrom}
+                  minDate={today}
+                  required
+                  ariaLabel="Fecha de inicio de vacaciones"
+                />
+              </FormField>
+              <FormField label="Hasta" htmlFor="vacation-date-to">
+                <DatePicker
+                  id="vacation-date-to"
+                  name="dateTo"
+                  value={vacationDateTo}
+                  onChange={setVacationDateTo}
+                  minDate={today}
+                  required
+                  ariaLabel="Fecha de fin de vacaciones"
+                />
+              </FormField>
             </div>
-            <ReasonField />
+            <ReasonField id="vacation-reason" />
             <Feedback state={vacationState} />
-            <SubmitButton pending={vacationPending} label="Cargar vacaciones" />
+            <SubmitButton
+              pending={vacationPending}
+              disabled={!vacationDateFrom || !vacationDateTo}
+              label="Cargar vacaciones"
+            />
           </form>
         )}
       </div>
 
       <div className="mt-8">
         <h3 className="font-semibold">Próximos bloqueos</h3>
-        {initialBlockedSlots.length === 0 ? (
-          <p className="mt-3 rounded-xl border border-dashed border-[var(--border)] p-5 text-center text-sm text-[var(--muted)]">
-            No hay bloqueos próximos para este barbero.
-          </p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {initialBlockedSlots.map(block => (
-              <article
-                key={block.id}
-                className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex min-w-0 gap-3">
-                  <div className={`mt-0.5 rounded-lg p-2 ${block.all_day ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
-                    {block.all_day
-                      ? <CalendarOff className="h-4 w-4" />
-                      : <Clock3 className="h-4 w-4" />}
-                  </div>
-                  <div>
-                  <p className="font-medium">
-                    {formatLocalDate(block.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">
-                    {block.all_day
-                      ? 'Día completo'
-                      : `${block.start_time?.slice(0, 5)} a ${block.end_time?.slice(0, 5)}`}
-                  </p>
-                  {block.reason && <p className="mt-1 text-sm">Motivo: {block.reason}</p>}
-                  </div>
-                </div>
-                <DeleteBlockButton
-                  barberId={barberId}
-                  block={block}
-                  onToast={notify}
-                />
-              </article>
-            ))}
-          </div>
-        )}
+        <UpcomingBlockedSlots
+          barberId={barberId}
+          blockedSlots={initialBlockedSlots}
+          onToast={notify}
+        />
       </div>
-    </section>
+    </div>
   )
 }
 
-function ReasonField() {
+function ReasonField({ id }: { id: string }) {
   return (
-    <label className="block text-sm font-medium">
-      Motivo <span className="font-normal text-[var(--muted)]">(opcional)</span>
+    <FormField label="Motivo" htmlFor={id} help="Opcional, hasta 500 caracteres.">
       <input
-        className={`${INPUT_CLASS} mt-1`}
+        id={id}
+        className={`${inputClassName} w-full`}
         type="text"
         name="reason"
         maxLength={500}
         placeholder="Ej.: trámite personal"
       />
-    </label>
+    </FormField>
   )
 }
 
-function SubmitButton({ pending, label }: { pending: boolean; label: string }) {
+function SubmitButton({
+  pending,
+  disabled = false,
+  label,
+}: {
+  pending: boolean
+  disabled?: boolean
+  label: string
+}) {
   return (
-    <button
+    <Button
       type="submit"
-      disabled={pending}
-      className="w-full rounded-xl bg-[var(--primary)] px-4 py-3 font-semibold text-white transition-colors hover:bg-[var(--primary-dark)] disabled:opacity-50"
+      disabled={pending || disabled}
+      className="w-full"
     >
       {pending ? 'Guardando...' : label}
-    </button>
+    </Button>
   )
 }
