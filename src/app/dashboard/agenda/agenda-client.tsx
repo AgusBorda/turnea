@@ -2,10 +2,17 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, X, Check, Ban, Phone, ChevronLeft, ChevronRight, CalendarOff, AlertCircle } from 'lucide-react'
+import { Plus, X, Check, Ban, Phone, ChevronLeft, ChevronRight, CalendarOff, AlertCircle, CircleAlert, Scissors, UserRound } from 'lucide-react'
+import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components'
 import { formatPrice } from '@/lib/utils'
 import { useMinuteNow } from '@/hooks/use-minute-now'
 import Button from '@/components/ui/button'
+import DatePicker from '@/components/ui/date-picker'
+import FormField from '@/components/ui/form-field'
+import { inputClassName } from '@/components/ui/input-styles'
+import TurneaSelect from '@/components/ui/select'
+import TimePicker from '@/components/ui/time-picker'
+import { ToastViewport, useToast } from '@/components/ui/toast'
 import {
   addCalendarDays,
   addCalendarMonths,
@@ -193,6 +200,37 @@ function getPendingPaymentState(appointment: AppointmentData, now: Date | null):
   }
   if (!appointment.expires_at || !now) return 'active'
   return Date.parse(appointment.expires_at) <= now.getTime() ? 'expired' : 'active'
+}
+
+function getCreateAppointmentErrorMessage(message: string) {
+  if (message.includes('SLOT_CONFLICT')) {
+    return 'Ese horario acaba de ser reservado. Elegí otro disponible.'
+  }
+  if (message.includes('SLOT_UNAVAILABLE')) {
+    return 'Ese horario no está disponible.'
+  }
+  if (message.includes('APPOINTMENT_IN_PAST')) {
+    return 'No podés crear un turno en una fecha u horario que ya pasó.'
+  }
+  if (message.includes('INVALID_BARBER')) {
+    return 'El barbero seleccionado ya no está disponible.'
+  }
+  if (message.includes('INVALID_SERVICE')) {
+    return 'El servicio seleccionado ya no está disponible.'
+  }
+  if (message.includes('PAYMENT_REQUIRED') || message.includes('INVALID_PAYMENT_BOOKING')) {
+    return 'Este turno requiere completar el flujo de pago correspondiente.'
+  }
+  if (message.includes('DST_')) {
+    return 'Ese horario no está disponible por un cambio de hora. Elegí otro horario.'
+  }
+  if (message.includes('INVALID_APPOINTMENT_TIME')) {
+    return 'La hora elegida no permite completar el servicio dentro del mismo día.'
+  }
+  if (message.includes('INVALID_APPOINTMENT_DATA')) {
+    return 'Revisá los datos del cliente e intentá nuevamente.'
+  }
+  return 'No se pudo crear el turno. Revisá los datos e intentá nuevamente.'
 }
 
 function statusColor(appointment: AppointmentData, now: Date | null) {
@@ -618,6 +656,7 @@ function MonthView({ appointments, blockedSlots, currentDate, timezone, now, bar
 
 export default function AgendaClient({ barbershopId, timezone, barbers, services, barberSchedules }: Props) {
   const now = useMinuteNow()
+  const { toasts, showToast, dismissToast } = useToast()
   const [view, setView] = useState<View>('day')
   const [currentDate, setCurrentDate] = useState<LocalDate>(() => getBarbershopToday(timezone))
   const [appointments, setAppointments] = useState<AppointmentData[]>([])
@@ -636,6 +675,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
   const [newServiceId, setNewServiceId] = useState(services[0]?.id || '')
   const [newClientName, setNewClientName] = useState('')
   const [newClientPhone, setNewClientPhone] = useState('')
+  const [newFormError, setNewFormError] = useState<string | null>(null)
 
   const fetchAgendaData = useCallback(async () => {
     setLoadingData(true)
@@ -696,6 +736,12 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
   )
   const barberNames = Object.fromEntries(barbers.map(barber => [barber.id, barber.name]))
   const showBarberName = selectedBarberId === 'all'
+  const barberOptions = barbers.map(barber => ({ id: barber.id, label: barber.name }))
+  const serviceOptions = services.map(service => ({
+    id: service.id,
+    label: service.name,
+    description: `${service.duration} min · ${formatPrice(service.price)}`,
+  }))
 
   function navigate(dir: 1 | -1) {
     if (view === 'day') setCurrentDate(d => addCalendarDays(d, dir))
@@ -715,11 +761,35 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
     return formatLocalDate(currentDate, { month: 'long', year: 'numeric' })
   }
 
+  function openNewAppointmentModal() {
+    setNewDate(currentDate)
+    setNewFormError(null)
+    setShowNewForm(true)
+  }
+
+  function resetNewAppointmentForm() {
+    setNewDate('')
+    setNewTime('09:00')
+    setNewBarberId(barbers[0]?.id || '')
+    setNewServiceId(services[0]?.id || '')
+    setNewClientName('')
+    setNewClientPhone('')
+    setNewFormError(null)
+  }
+
   async function createAppointment() {
-    if (!newDate || !newTime || !newBarberId || !newServiceId || !newClientName.trim()) return
+    if (!newDate || !newTime || !newBarberId || !newServiceId || !newClientName.trim()) {
+      setNewFormError('Completá la fecha, hora, barbero, servicio y nombre del cliente.')
+      return
+    }
     setActionLoading(true)
+    setNewFormError(null)
     const service = services.find(s => s.id === newServiceId)
-    if (!service) { setActionLoading(false); return }
+    if (!service) {
+      setNewFormError('El servicio seleccionado ya no está disponible.')
+      setActionLoading(false)
+      return
+    }
     const supabase = createClient()
     const { error } = await supabase.rpc('create_appointment_atomic', {
       p_barbershop_id: barbershopId,
@@ -730,14 +800,13 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
       p_client_name: newClientName.trim(),
       p_client_phone: newClientPhone.trim() || null,
     })
-    if (error?.message.includes('SLOT_')) {
-      window.alert('Ese horario acaba de ser reservado. ElegÃ­ otro disponible.')
-    } else if (error?.message.includes('DST_')) {
-      window.alert('Ese horario no está disponible por un cambio de hora. Elegí otro horario.')
-    } else if (error) {
-      window.alert('No se pudo crear el turno. RevisÃ¡ los datos e intentÃ¡ nuevamente.')
-    } else if (!error) {
-      setShowNewForm(false); setNewClientName(''); setNewClientPhone(''); fetchAgendaData()
+    if (error) {
+      setNewFormError(getCreateAppointmentErrorMessage(error.message))
+    } else {
+      setShowNewForm(false)
+      resetNewAppointmentForm()
+      showToast({ message: 'Turno creado', tone: 'success' })
+      fetchAgendaData()
     }
     setActionLoading(false)
   }
@@ -760,6 +829,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
 
   return (
     <div>
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
       <div className="mb-4 space-y-3 sm:mb-5">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -768,7 +838,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
           </div>
           <Button
             type="button"
-            onClick={() => { setNewDate(currentDate); setShowNewForm(true) }}
+            onClick={openNewAppointmentModal}
             className="min-h-10 shrink-0 px-3 sm:min-h-11 sm:px-4"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -872,67 +942,152 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
       {!dataError && view === 'week' && <WeekView appointments={filteredAgendaData.appointments} blockedSlots={filteredAgendaData.blockedSlots} currentDate={currentDate} timezone={timezone} now={now} barberNames={barberNames} showBarberName={showBarberName} onSelect={setSelectedApt} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
       {!dataError && view === 'month' && <MonthView appointments={filteredAgendaData.appointments} blockedSlots={filteredAgendaData.blockedSlots} currentDate={currentDate} timezone={timezone} now={now} barberNames={barberNames} showBarberName={showBarberName} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
 
-      {showNewForm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-2xl sm:rounded-xl w-full sm:max-w-md p-5 sm:p-6 max-h-[92dvh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Nuevo turno manual</h3>
-              <button onClick={() => setShowNewForm(false)} className="p-1 rounded-lg hover:bg-gray-100 transition-colors"><X className="w-5 h-5 text-[var(--muted)]" /></button>
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1.5">Fecha *</label>
-                  <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] text-sm bg-white" />
+      <ModalOverlay
+        isOpen={showNewForm}
+        isDismissable={!actionLoading}
+        onOpenChange={isOpen => {
+          if (!isOpen && !actionLoading) setShowNewForm(false)
+        }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-3 backdrop-blur-[1px] sm:p-4"
+      >
+        <Modal className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl outline-none sm:h-auto sm:max-h-[90dvh] sm:max-w-lg sm:rounded-2xl">
+          <Dialog className="flex min-h-0 flex-1 flex-col outline-none">
+            <form
+              className="flex min-h-0 flex-1 flex-col"
+              onSubmit={event => {
+                event.preventDefault()
+                void createAppointment()
+              }}
+            >
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] bg-white px-4 py-4 sm:px-6">
+                <div className="min-w-0">
+                  <Heading slot="title" className="text-lg font-bold text-[var(--foreground)]">
+                    Nuevo turno
+                  </Heading>
+                  <p className="mt-0.5 text-sm text-[var(--muted)]">Agregá un turno manualmente a la agenda.</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1.5">Hora *</label>
-                  <input type="time" value={newTime} onChange={e => setNewTime(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] text-sm bg-white" />
+                <button
+                  type="button"
+                  onClick={() => setShowNewForm(false)}
+                  disabled={actionLoading}
+                  aria-label="Cerrar nuevo turno"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:opacity-50"
+                >
+                  <X className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-5 [-ms-overflow-style:none] [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField label="Fecha" htmlFor="new-appointment-date">
+                    <DatePicker
+                      id="new-appointment-date"
+                      value={newDate}
+                      onChange={value => setNewDate(value ?? '')}
+                      disabled={actionLoading}
+                      required
+                      ariaLabel="Fecha del nuevo turno"
+                    />
+                  </FormField>
+                  <FormField label="Hora" htmlFor="new-appointment-time">
+                    <TimePicker
+                      id="new-appointment-time"
+                      value={newTime}
+                      onChange={value => setNewTime(value ?? '')}
+                      stepMinutes={1}
+                      disabled={actionLoading}
+                      required
+                      ariaLabel="Hora de inicio del nuevo turno"
+                    />
+                  </FormField>
                 </div>
+
+                <FormField label="Barbero" htmlFor="new-appointment-barber">
+                  <TurneaSelect
+                    id="new-appointment-barber"
+                    value={newBarberId}
+                    onChange={setNewBarberId}
+                    options={barberOptions}
+                    ariaLabel="Barbero del nuevo turno"
+                    placeholder="Seleccionar barbero"
+                    leadingIcon={<UserRound className="h-4 w-4 shrink-0 text-[var(--primary)]" aria-hidden="true" />}
+                    disabled={actionLoading}
+                  />
+                </FormField>
+
+                <FormField label="Servicio" htmlFor="new-appointment-service">
+                  <TurneaSelect
+                    id="new-appointment-service"
+                    value={newServiceId}
+                    onChange={setNewServiceId}
+                    options={serviceOptions}
+                    ariaLabel="Servicio del nuevo turno"
+                    placeholder="Seleccionar servicio"
+                    leadingIcon={<Scissors className="h-4 w-4 shrink-0 text-[var(--primary)]" aria-hidden="true" />}
+                    disabled={actionLoading}
+                  />
+                </FormField>
+
+                <FormField label="Nombre del cliente" htmlFor="new-appointment-client-name">
+                  <input
+                    id="new-appointment-client-name"
+                    type="text"
+                    value={newClientName}
+                    onChange={event => setNewClientName(event.target.value)}
+                    className={`w-full ${inputClassName}`}
+                    placeholder="Ej. Juan Pérez"
+                    autoComplete="name"
+                    disabled={actionLoading}
+                    required
+                  />
+                </FormField>
+
+                <FormField label="WhatsApp (opcional)" htmlFor="new-appointment-client-phone">
+                  <input
+                    id="new-appointment-client-phone"
+                    type="tel"
+                    value={newClientPhone}
+                    onChange={event => setNewClientPhone(event.target.value)}
+                    className={`w-full ${inputClassName}`}
+                    placeholder="Ej. 11 5555 7788"
+                    autoComplete="tel"
+                    disabled={actionLoading}
+                  />
+                </FormField>
+
+                {newFormError && (
+                  <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50/70 p-3 text-sm text-red-800">
+                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <p>{newFormError}</p>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Barbero *</label>
-                <select value={newBarberId} onChange={e => setNewBarberId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] text-sm bg-white">
-                  {barbers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
+
+              <div
+                className="flex shrink-0 gap-3 border-t border-[var(--border)] bg-white px-4 pt-4 sm:justify-end sm:px-6"
+                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setShowNewForm(false)}
+                  disabled={actionLoading}
+                  className="flex-1 sm:flex-none"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={actionLoading || !newDate || !newTime || !newBarberId || !newServiceId || !newClientName.trim()}
+                  className="flex-1 sm:min-w-32 sm:flex-none"
+                >
+                  {actionLoading ? 'Creando...' : 'Crear turno'}
+                </Button>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Servicio *</label>
-                <select value={newServiceId} onChange={e => setNewServiceId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] text-sm bg-white">
-                  {services.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.duration}min - {formatPrice(s.price)})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">Nombre del cliente *</label>
-                <input type="text" value={newClientName} onChange={e => setNewClientName(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] text-sm bg-white"
-                  placeholder="Ej: Juan Perez" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1.5">WhatsApp (opcional)</label>
-                <input type="tel" value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] text-sm bg-white"
-                  placeholder="1155667788" />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowNewForm(false)}
-                className="flex-1 py-2.5 border border-[var(--border)] rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">Cancelar</button>
-              <button onClick={createAppointment}
-                disabled={actionLoading || !newDate || !newTime || !newBarberId || !newServiceId || !newClientName.trim()}
-                className="flex-1 py-2.5 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-dark)] transition-colors disabled:opacity-50 text-sm">
-                {actionLoading ? 'Creando...' : 'Crear turno'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </form>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
 
       {selectedApt && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">

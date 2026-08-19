@@ -447,11 +447,11 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 * Pending payments vigentes y vencidos mantienen una representación diferenciada sin cambiar reglas backend.
 * Header, navegación, filtros y calendarios fueron adaptados para mobile, tablet y desktop.
 * Estados vacíos, error y retry quedaron integrados al lenguaje visual actual.
+* El modal “Nuevo turno” fue modernizado con DatePicker, TimePicker y Select de Turnea, feedback inline, toast de éxito y shell responsive centrado.
 * TypeScript, ESLint específico, `git diff --check` y build fueron validados.
 
 **Deuda fuera del alcance de 9D:**
 * Rediseñar conceptualmente la vista Semana de Agenda.
-* Modernizar el modal “Nuevo turno” con foundations y DatePicker/TimePicker de Turnea.
 * Evaluar sombreado de disponibilidad basado en `barber_schedules`.
 * Evaluar un rango temporal dinámico en lugar del intervalo visual fijo 08:00–22:00.
 
@@ -481,7 +481,6 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 * Resolver por separado las vulnerabilidades informadas por `npm audit` y la actualización de Next.js.
 * Extender gradualmente este lenguaje visual a Agenda, Servicios, Barberos, Configuración y Conciliaciones.
 * Rediseñar la vista Semana de Agenda: la estructura actual de siete columnas/cards no termina de encajar con la nueva dirección visual de Turnea, especialmente en mobile.
-* Modernizar el modal “Nuevo turno” de Agenda usando las foundations visuales y los controles DatePicker/TimePicker de Turnea.
 
 **Estado:** ✅ Completado
 
