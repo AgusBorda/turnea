@@ -429,6 +429,34 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 
 **Estado:** implementado localmente; pendiente de validación UI en DEV/Preview.
 
+#### ✅ Etapa 9D — Agenda y disponibilidad especial
+
+* [x] 9D.1 — Auditoría funcional y diseño
+* [x] 9D.2 — Datos base y filtro por barbero
+* [x] 9D.3 — Representación de bloqueos parciales
+* [x] 9D.4 — Representación de días completos y vacaciones
+* [x] 9D.5 — Responsive y polish general
+* [x] 9D.6 — Validación y cierre técnico
+
+**Resultado:**
+* Agenda carga appointments y blocked slots en paralelo para todo el rango visible.
+* Los horarios semanales se cargan una sola vez server-side con columnas mínimas.
+* El filtro por barbero funciona client-side y no provoca nuevas consultas.
+* Los bloqueos parciales respetan su geometría civil y los días completos se muestran como estados read-only.
+* Las vistas Día, Semana y Mes identifican al barbero cuando se usa el filtro “Todos”.
+* Pending payments vigentes y vencidos mantienen una representación diferenciada sin cambiar reglas backend.
+* Header, navegación, filtros y calendarios fueron adaptados para mobile, tablet y desktop.
+* Estados vacíos, error y retry quedaron integrados al lenguaje visual actual.
+* TypeScript, ESLint específico, `git diff --check` y build fueron validados.
+
+**Deuda fuera del alcance de 9D:**
+* Rediseñar conceptualmente la vista Semana de Agenda.
+* Modernizar el modal “Nuevo turno” con foundations y DatePicker/TimePicker de Turnea.
+* Evaluar sombreado de disponibilidad basado en `barber_schedules`.
+* Evaluar un rango temporal dinámico en lugar del intervalo visual fijo 08:00–22:00.
+
+**Estado:** ✅ Completado
+
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 
 * [x] 9F.1 — Foundations visuales reutilizables
@@ -452,12 +480,13 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 * Migrar la convención de Next.js de `middleware` a `proxy`.
 * Resolver por separado las vulnerabilidades informadas por `npm audit` y la actualización de Next.js.
 * Extender gradualmente este lenguaje visual a Agenda, Servicios, Barberos, Configuración y Conciliaciones.
+* Rediseñar la vista Semana de Agenda: la estructura actual de siete columnas/cards no termina de encajar con la nueva dirección visual de Turnea, especialmente en mobile.
+* Modernizar el modal “Nuevo turno” de Agenda usando las foundations visuales y los controles DatePicker/TimePicker de Turnea.
 
 **Estado:** ✅ Completado
 
 #### ⏳ Etapas pendientes
 
-* [ ] 9D — Agenda y Booking
 * [ ] 9E — Validación UX/mobile
 
 > Producción todavía no fue desplegada ni probada. Las validaciones de 9B corresponden exclusivamente a Supabase DEV.
