@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, X, Check, Ban, Phone, ChevronLeft, ChevronRight, CalendarOff, AlertCircle, CircleAlert, Scissors, UserRound } from 'lucide-react'
+import { Plus, X, Check, Ban, Phone, ChevronLeft, ChevronRight, CalendarOff, CalendarDays, ArrowRight, AlertCircle, CircleAlert, Scissors, UserRound } from 'lucide-react'
 import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components'
 import { formatPrice } from '@/lib/utils'
 import { useMinuteNow } from '@/hooks/use-minute-now'
@@ -259,6 +259,20 @@ function statusLabel(appointment: AppointmentData, now: Date | null) {
   return map[status] || status
 }
 
+function weekStatusStyle(appointment: AppointmentData, now: Date | null) {
+  if (getPendingPaymentState(appointment, now) === 'expired') {
+    return { dot: 'bg-gray-400', text: 'text-gray-500' }
+  }
+
+  switch (appointment.status) {
+    case 'completed': return { dot: 'bg-emerald-500', text: 'text-emerald-700' }
+    case 'no_show': return { dot: 'bg-red-500', text: 'text-red-700' }
+    case 'pending_payment': return { dot: 'bg-amber-500', text: 'text-amber-700' }
+    case 'pending': return { dot: 'bg-slate-400', text: 'text-slate-600' }
+    default: return { dot: 'bg-[var(--primary)]', text: 'text-[var(--muted)]' }
+  }
+}
+
 function getVisibleDateRange(view: View, currentDate: LocalDate) {
   if (view === 'day') return { from: currentDate, to: currentDate }
   if (view === 'week') {
@@ -453,108 +467,229 @@ function DayView({ appointments, blockedSlots, date, timezone, now, barberNames,
   )
 }
 
-function WeekView({ appointments, blockedSlots, currentDate, timezone, now, barberNames, showBarberName, onSelect, onDayClick }: {
+function WeekView({ appointments, blockedSlots, currentDate, selectedDate, timezone, now, barberNames, showBarberName, onSelect, onSelectDate, onDayClick }: {
   appointments: AppointmentData[]
   blockedSlots: BlockedSlotData[]
   currentDate: LocalDate
+  selectedDate: LocalDate
   timezone: string
   now: Date | null
   barberNames: Record<string, string>
   showBarberName: boolean
   onSelect: (apt: AppointmentData) => void
+  onSelectDate: (date: LocalDate) => void
   onDayClick: (d: LocalDate) => void
 }) {
   const weekStart = getWeekStartLocalDate(currentDate, 1)
   const days = Array.from({ length: 7 }, (_, i) => addCalendarDays(weekStart, i))
+  const effectiveSelectedDate = days.includes(selectedDate) ? selectedDate : weekStart
+  const selectedItems = getSummaryDayItems(appointments, blockedSlots, effectiveSelectedDate)
+  const selectedAppointments = appointments.filter(appointment => (
+    appointment.date === effectiveSelectedDate
+    && appointment.status !== 'cancelled'
+    && getPendingPaymentState(appointment, now) !== 'expired'
+  ))
+  const selectedPartialBlocks = blockedSlots.filter(block => block.date === effectiveSelectedDate && !block.all_day)
+  const selectedAllDayBlocks = getAllDayBlocksForDate(blockedSlots, effectiveSelectedDate)
+  const selectedAllDayItems = selectedItems.filter(item => item.type === 'all-day-block')
+  const selectedTimedItems = selectedItems.filter(item => item.type !== 'all-day-block')
+  const visibleItems = selectedTimedItems.slice(0, 8)
+
   return (
-    <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 pb-2" tabIndex={0} aria-label="Agenda semanal; desplazá horizontalmente para ver todos los días">
-      <div className="grid min-w-[680px] grid-cols-7 gap-1.5 sm:gap-2">
+    <div className="space-y-4">
+      <div className="grid grid-cols-7 overflow-hidden rounded-2xl border border-[var(--border)] bg-white p-1" role="group" aria-label="Seleccionar día de la semana">
         {days.map(day => {
-          const dateStr = day
-          const dayItems = getSummaryDayItems(appointments, blockedSlots, dateStr)
+          const dayAppointments = appointments.filter(appointment => (
+            appointment.date === day
+            && appointment.status !== 'cancelled'
+            && getPendingPaymentState(appointment, now) !== 'expired'
+          ))
+          const partialBlockCount = blockedSlots.filter(block => block.date === day && !block.all_day).length
+          const allDayBlockCount = getAllDayBlocksForDate(blockedSlots, day).length
           const isCurrentDay = now ? isLocalDateToday(day, timezone, now) : false
+          const isSelected = day === effectiveSelectedDate
+          const fullDateLabel = formatLocalDate(day, { weekday: 'long', day: 'numeric', month: 'long' })
+          const ariaSummary = [
+            `${dayAppointments.length} ${dayAppointments.length === 1 ? 'turno' : 'turnos'}`,
+            partialBlockCount > 0 ? `${partialBlockCount} ${partialBlockCount === 1 ? 'bloqueo horario' : 'bloqueos horarios'}` : null,
+            allDayBlockCount > 0 ? `${allDayBlockCount} ${allDayBlockCount === 1 ? 'ausencia de día completo' : 'ausencias de día completo'}` : null,
+          ].filter(Boolean).join(', ')
+
           return (
-            <div key={dateStr} className={`bg-white rounded-xl border min-h-[160px] ${isCurrentDay ? 'border-purple-400 ring-1 ring-purple-200/50' : 'border-[var(--border)]'}`}>
-              <button onClick={() => onDayClick(day)}
-                className={`flex min-h-11 w-full flex-col items-center gap-0.5 rounded-t-xl border-b px-2 py-2 text-center transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)] ${isCurrentDay ? 'border-purple-100' : 'border-[var(--border)]'}`}>
-                <span className={`text-xs font-medium capitalize ${isCurrentDay ? 'text-purple-600' : 'text-[var(--muted)]'}`}>
-                  {formatLocalDate(day, { weekday: 'short' })}
+            <button
+              key={day}
+              type="button"
+              onClick={() => onSelectDate(day)}
+              aria-pressed={isSelected}
+              aria-controls="week-day-focus"
+              aria-label={`${fullDateLabel}, ${ariaSummary}${isCurrentDay ? ', hoy' : ''}`}
+              className={`relative flex min-h-[72px] min-w-0 flex-col items-center justify-center rounded-xl border border-transparent px-0.5 py-1.5 text-center transition-[background-color,border-color,color] motion-reduce:transition-none focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-inset sm:min-h-[88px] sm:px-2 sm:py-2 ${
+                isSelected
+                  ? 'border-purple-200 bg-purple-50 text-purple-900'
+                  : isCurrentDay
+                    ? 'text-purple-800 hover:bg-purple-50/60'
+                    : 'text-[var(--foreground)] hover:bg-[var(--secondary)]/70'
+              }`}
+            >
+              {isCurrentDay && (
+                <span
+                  className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
+                  aria-hidden="true"
+                />
+              )}
+              <span className={`text-[10px] font-bold uppercase tracking-wide sm:text-xs ${isSelected ? 'text-purple-700' : 'text-[var(--muted)]'}`}>
+                <span className="sm:hidden">{['L', 'M', 'X', 'J', 'V', 'S', 'D'][days.indexOf(day)]}</span>
+                <span className="hidden capitalize sm:inline">{formatLocalDate(day, { weekday: 'short' })}</span>
+              </span>
+              <span className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold sm:h-8 sm:w-8 sm:text-base ${
+                isSelected ? 'bg-[var(--primary)] text-white' : isCurrentDay ? 'text-[var(--primary)]' : ''
+              }`}>
+                {formatLocalDate(day, { day: 'numeric' })}
+              </span>
+              <span className="mt-0.5 flex h-4 items-center justify-center gap-1 sm:h-5 sm:gap-1.5">
+                <span className={`text-[10px] font-semibold leading-none sm:text-xs ${isSelected ? 'text-purple-700' : 'text-[var(--muted)]'}`}>
+                  <span className="sm:hidden">{dayAppointments.length}</span>
+                  <span className="hidden sm:inline">{dayAppointments.length} {dayAppointments.length === 1 ? 'turno' : 'turnos'}</span>
                 </span>
-                <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold ${isCurrentDay ? 'bg-purple-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>
-                  {formatLocalDate(day, { day: 'numeric' })}
-                </span>
-              </button>
-              <div className="p-1.5 space-y-1">
-                {dayItems.length === 0 ? (
-                  <p className="text-xs text-center text-gray-300 py-4">-</p>
-                ) : (
-                  <>
-                    {dayItems.slice(0, 7).map(item => {
-                      if (item.type === 'appointment') {
-                        return (
-                          <button key={item.appointment.id} onClick={() => onSelect(item.appointment)}
-                            className={`w-full text-left text-xs px-2 py-1.5 rounded-lg border transition-all hover:brightness-95 ${statusColor(item.appointment, now)}`}>
-                            <span className="font-bold">{item.appointment.start_time.slice(0, 5)}</span>
-                            <span className="ml-1 truncate block leading-tight">
-                              {getPendingPaymentState(item.appointment, now) === 'expired' ? 'Pago vencido' : item.appointment.client_name || '?'}
-                            </span>
-                          </button>
-                        )
-                      }
-
-                      const block = item.blockedSlot
-                      const barberName = barberNames[block.barber_id]
-                      const reason = getBlockedSlotReason(block)
-
-                      if (item.type === 'all-day-block') {
-                        return (
-                          <div
-                            key={`all-day-${block.id}`}
-                            role="note"
-                            aria-label={getAllDayBlockLabel(block, barberName, showBarberName)}
-                            title={reason || undefined}
-                            className="border-l-2 border-amber-400 px-2 py-0.5 text-xs text-gray-800"
-                          >
-                            <p className="flex items-center gap-1 truncate font-semibold">
-                              <CalendarOff className="h-3 w-3 shrink-0 text-amber-600" aria-hidden="true" />
-                              {showBarberName && barberName ? `${barberName} · ` : ''}No disponible
-                            </p>
-                            {reason && <p className="truncate text-[11px] text-gray-500">{reason}</p>}
-                          </div>
-                        )
-                      }
-
-                      return (
-                        <div
-                          key={`block-${block.id}`}
-                          role="note"
-                          aria-label={getBlockedSlotLabel(block, barberName, showBarberName)}
-                          title={reason || undefined}
-                          className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-900"
-                        >
-                          <p className="flex items-center gap-1 truncate font-bold tabular-nums">
-                            <CalendarOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                            {block.start_time!.slice(0, 5)}–{block.end_time!.slice(0, 5)}
-                          </p>
-                          <p className="mt-0.5 truncate leading-tight">
-                            Bloqueado{showBarberName && barberName ? ` · ${barberName}` : ''}
-                          </p>
-                          {reason && <p className="mt-0.5 truncate opacity-75">{reason}</p>}
-                        </div>
-                      )
-                    })}
-                    {dayItems.length > 7 && (
-                      <button onClick={() => onDayClick(day)} className="w-full text-xs text-center text-purple-500 hover:text-purple-700 py-1 font-medium">
-                        +{dayItems.length - 7} mas
-                      </button>
-                    )}
-                  </>
+                {(partialBlockCount > 0 || allDayBlockCount > 0) && (
+                  <span className="flex items-center justify-center gap-1 text-amber-700" aria-hidden="true">
+                    {partialBlockCount > 0 && <span className="inline-flex items-center"><Ban className="h-2.5 w-2.5 sm:h-3 sm:w-3" /><span className="sr-only sm:not-sr-only sm:ml-0.5 sm:text-[10px]">{partialBlockCount}</span></span>}
+                    {allDayBlockCount > 0 && <span className="inline-flex items-center"><CalendarOff className="h-2.5 w-2.5 sm:h-3 sm:w-3" /><span className="sr-only sm:not-sr-only sm:ml-0.5 sm:text-[10px]">{allDayBlockCount}</span></span>}
+                  </span>
                 )}
-              </div>
-            </div>
+              </span>
+            </button>
           )
         })}
       </div>
+
+      <section id="week-day-focus" className="overflow-hidden rounded-xl border border-[var(--border)] bg-white" aria-labelledby="week-day-focus-title">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3.5 sm:items-center sm:px-5 sm:py-4">
+          <div className="min-w-0">
+            <h2 id="week-day-focus-title" className="text-base font-bold capitalize text-[var(--foreground)] sm:text-lg">
+              {formatLocalDate(effectiveSelectedDate, { weekday: 'long' })}, {formatLocalDate(effectiveSelectedDate, { day: 'numeric', month: 'long' })}
+            </h2>
+            <p className="mt-0.5 text-sm text-[var(--muted)]">
+              {selectedAppointments.length} {selectedAppointments.length === 1 ? 'turno' : 'turnos'}
+              {selectedPartialBlocks.length > 0 && ` · ${selectedPartialBlocks.length} ${selectedPartialBlocks.length === 1 ? 'bloqueo horario' : 'bloqueos horarios'}`}
+              {selectedAllDayBlocks.length > 0 && ` · ${selectedAllDayBlocks.length} ${selectedAllDayBlocks.length === 1 ? 'ausencia' : 'ausencias'}`}
+            </p>
+          </div>
+          <Button type="button" variant="ghost" onClick={() => onDayClick(effectiveSelectedDate)} className="min-h-11 shrink-0 px-2.5 text-[var(--primary)]">
+            <span className="hidden sm:inline">Abrir día</span>
+            <span className="sm:hidden">Abrir</span>
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+
+        {selectedAllDayItems.length > 0 && (
+          <div className="space-y-1.5 border-b border-[var(--border)] bg-amber-50/30 px-4 py-3 sm:px-5">
+            {selectedAllDayItems.map(item => {
+              const block = item.blockedSlot
+              const barberName = barberNames[block.barber_id]
+              const reason = getBlockedSlotReason(block)
+              return (
+                <div
+                  key={`all-day-${block.id}`}
+                  role="note"
+                  aria-label={getAllDayBlockLabel(block, barberName, showBarberName)}
+                  className="flex items-start gap-2 border-l-2 border-amber-400 pl-3"
+                >
+                  <CalendarOff className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[var(--foreground)]">
+                      {showBarberName && barberName ? `${barberName} · ` : ''}Día no disponible
+                    </p>
+                    {reason && <p className="truncate text-xs text-[var(--muted)]">{reason}</p>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {selectedTimedItems.length === 0 ? (
+          <div className="flex items-center gap-3 px-4 py-5 text-[var(--muted)] sm:px-5">
+            <CalendarDays className="h-5 w-5 shrink-0 text-purple-300" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-medium text-[var(--foreground)]">No hay turnos programados</p>
+              <p className="text-xs">
+                {selectedAllDayItems.length > 0
+                  ? 'No hay turnos ni bloqueos horarios adicionales.'
+                  : 'El día está libre de turnos y bloqueos horarios.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {visibleItems.map(item => {
+              if (item.type === 'appointment') {
+                const appointment = item.appointment
+                const barberName = barberNames[appointment.barber_id]
+                const appointmentStatus = weekStatusStyle(appointment, now)
+                const isExpiredPending = getPendingPaymentState(appointment, now) === 'expired'
+                return (
+                  <button
+                    key={appointment.id}
+                    type="button"
+                    onClick={() => onSelect(appointment)}
+                    className={`group grid min-h-[60px] w-full grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-x-3 gap-y-1 px-4 py-3 text-left transition-colors motion-reduce:transition-none hover:bg-[var(--secondary)]/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)] sm:grid-cols-[3rem_minmax(0,1fr)_auto] sm:items-center sm:px-5 ${isExpiredPending ? 'bg-gray-50/50' : ''}`}
+                  >
+                    <span className={`pt-0.5 text-sm font-bold tabular-nums ${isExpiredPending ? 'text-gray-500' : 'text-[var(--foreground)]'}`}>{appointment.start_time.slice(0, 5)}</span>
+                    <span className="min-w-0">
+                      <span className={`block truncate text-sm font-semibold ${isExpiredPending ? 'text-gray-500' : 'text-[var(--foreground)]'}`}>
+                        {isExpiredPending ? 'Pago vencido' : appointment.client_name || 'Sin nombre'}
+                      </span>
+                      <span className="block truncate text-xs text-[var(--muted)]">
+                        {appointment.services?.name || 'Sin servicio'}{showBarberName && barberName ? ` · ${barberName}` : ''}
+                      </span>
+                    </span>
+                    <span className={`col-start-2 inline-flex min-w-0 items-center gap-1 text-[11px] font-semibold sm:col-start-3 sm:row-start-1 sm:text-xs ${appointmentStatus.text}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${appointmentStatus.dot}`} aria-hidden="true" />
+                      {statusLabel(appointment, now)}
+                    </span>
+                  </button>
+                )
+              }
+
+              const block = item.blockedSlot
+              const barberName = barberNames[block.barber_id]
+              const reason = getBlockedSlotReason(block)
+              return (
+                <div
+                  key={`block-${block.id}`}
+                  role="note"
+                  aria-label={getBlockedSlotLabel(block, barberName, showBarberName)}
+                  className="flex min-h-[60px] items-start gap-2.5 border-l-2 border-amber-300 bg-amber-50/20 px-4 py-3 sm:items-center sm:px-5"
+                >
+                  <Ban className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+                      <span className="shrink-0 font-bold tabular-nums text-amber-700">{block.start_time!.slice(0, 5)}–{block.end_time!.slice(0, 5)}</span>
+                      <span className="font-semibold text-[var(--foreground)]">Horario no disponible</span>
+                    </span>
+                    {(reason || (showBarberName && barberName)) && (
+                      <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">
+                        {[reason, showBarberName ? barberName : null].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )
+            })}
+            {selectedTimedItems.length > visibleItems.length && (
+              <button
+                type="button"
+                onClick={() => onDayClick(effectiveSelectedDate)}
+                className="min-h-11 w-full px-4 py-3 text-left text-sm font-semibold text-[var(--primary)] transition-colors motion-reduce:transition-none hover:bg-purple-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)] sm:px-5"
+              >
+                Ver los {selectedItems.length} elementos en Día
+                <ArrowRight className="ml-1 inline h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
@@ -659,6 +794,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
   const { toasts, showToast, dismissToast } = useToast()
   const [view, setView] = useState<View>('day')
   const [currentDate, setCurrentDate] = useState<LocalDate>(() => getBarbershopToday(timezone))
+  const [selectedWeekDate, setSelectedWeekDate] = useState<LocalDate>(() => getBarbershopToday(timezone))
   const [appointments, setAppointments] = useState<AppointmentData[]>([])
   const [blockedSlots, setBlockedSlots] = useState<BlockedSlotData[]>([])
   const [selectedBarberId, setSelectedBarberId] = useState(() => (
@@ -745,11 +881,37 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
 
   function navigate(dir: 1 | -1) {
     if (view === 'day') setCurrentDate(d => addCalendarDays(d, dir))
-    else if (view === 'week') setCurrentDate(d => addCalendarDays(d, dir * 7))
+    else if (view === 'week') {
+      setCurrentDate(d => addCalendarDays(d, dir * 7))
+      setSelectedWeekDate(date => addCalendarDays(date, dir * 7))
+    }
     else setCurrentDate(d => addCalendarMonths(d, dir))
   }
 
-  function goToday() { setCurrentDate(getBarbershopToday(timezone, now ?? new Date())) }
+  function goToday() {
+    const today = getBarbershopToday(timezone, now ?? new Date())
+    setCurrentDate(today)
+    if (view === 'week') setSelectedWeekDate(today)
+  }
+
+  function changeView(nextView: View) {
+    if (nextView === view) return
+
+    if (nextView === 'week') {
+      const weekStart = getWeekStartLocalDate(currentDate, 1)
+      const weekEnd = getWeekEndLocalDate(currentDate, 1)
+      const today = getBarbershopToday(timezone, now ?? new Date())
+      setSelectedWeekDate(today >= weekStart && today <= weekEnd ? today : currentDate)
+    } else if (view === 'week') {
+      setCurrentDate(selectedWeekDate)
+    }
+    setView(nextView)
+  }
+
+  function openSelectedWeekDay(date: LocalDate) {
+    setCurrentDate(date)
+    setView('day')
+  }
 
   function getNavLabel() {
     if (view === 'day') return formatLocalDate(currentDate, { weekday: 'long', day: 'numeric', month: 'long' })
@@ -853,7 +1015,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
               <button
                 key={v}
                 type="button"
-                onClick={() => setView(v)}
+                onClick={() => changeView(v)}
                 aria-pressed={view === v}
                 className={`min-h-10 rounded-lg px-3 font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-1 ${view === v ? 'bg-white text-[var(--primary)] shadow-sm' : 'text-gray-500 hover:bg-white/60 hover:text-gray-700'}`}
               >
@@ -939,7 +1101,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
       )}
 
       {!dataError && view === 'day' && <DayView appointments={filteredAgendaData.appointments} blockedSlots={filteredAgendaData.blockedSlots} date={currentDate} timezone={timezone} now={now} barberNames={barberNames} showBarberName={showBarberName} onSelect={setSelectedApt} />}
-      {!dataError && view === 'week' && <WeekView appointments={filteredAgendaData.appointments} blockedSlots={filteredAgendaData.blockedSlots} currentDate={currentDate} timezone={timezone} now={now} barberNames={barberNames} showBarberName={showBarberName} onSelect={setSelectedApt} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
+      {!dataError && view === 'week' && <WeekView appointments={filteredAgendaData.appointments} blockedSlots={filteredAgendaData.blockedSlots} currentDate={currentDate} selectedDate={selectedWeekDate} timezone={timezone} now={now} barberNames={barberNames} showBarberName={showBarberName} onSelect={setSelectedApt} onSelectDate={setSelectedWeekDate} onDayClick={openSelectedWeekDay} />}
       {!dataError && view === 'month' && <MonthView appointments={filteredAgendaData.appointments} blockedSlots={filteredAgendaData.blockedSlots} currentDate={currentDate} timezone={timezone} now={now} barberNames={barberNames} showBarberName={showBarberName} onDayClick={d => { setCurrentDate(d); setView('day') }} />}
 
       <ModalOverlay

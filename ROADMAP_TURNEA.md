@@ -451,11 +451,28 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 * TypeScript, ESLint específico, `git diff --check` y build fueron validados.
 
 **Deuda fuera del alcance de 9D:**
-* Rediseñar conceptualmente la vista Semana de Agenda.
 * Evaluar sombreado de disponibilidad basado en `barber_schedules`.
 * Evaluar un rango temporal dinámico en lugar del intervalo visual fijo 08:00–22:00.
 
 **Estado:** ✅ Completado
+
+#### ✅ Vista Semana rediseñada
+
+* [x] S1 — Auditoría UX/UI y definición de Week Strip + Day Focus
+* [x] S2 — Estructura, selección civil y navegación implementadas localmente
+* [x] S3 — Lenguaje visual y densidad aprobados visualmente
+* [x] S4 — Responsive y accesibilidad fina
+* [x] S5 — Validación funcional y cierre
+
+**Resultado:**
+* Week Strip de siete días + Day Focus, sin scroll horizontal obligatorio.
+* Diseño responsive con estados `selected` y `today`, conteos e indicadores de disponibilidad alineados.
+* Filas compactas de appointments, bloqueos parciales y ausencias de día completo.
+* Modo Todos con identificación de barbero en contenido agregado.
+* Densidad controlada: hasta ocho elementos y CTA para abrir el día completo cuando hay más.
+* Navegación por semana, accesibilidad por teclado y fechas civiles según timezone de la barbería validadas.
+
+**Estado:** ✅ S1–S5 completadas
 
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 
@@ -480,7 +497,6 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 * Migrar la convención de Next.js de `middleware` a `proxy`.
 * Resolver por separado las vulnerabilidades informadas por `npm audit` y la actualización de Next.js.
 * Extender gradualmente este lenguaje visual a Agenda, Servicios, Barberos, Configuración y Conciliaciones.
-* Rediseñar la vista Semana de Agenda: la estructura actual de siete columnas/cards no termina de encajar con la nueva dirección visual de Turnea, especialmente en mobile.
 
 **Estado:** ✅ Completado
 
