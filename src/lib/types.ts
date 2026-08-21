@@ -37,6 +37,13 @@ export interface Barber {
   updated_at: string
 }
 
+export type PublicBarber = Pick<
+  Barber,
+  'id' | 'name' | 'bio' | 'photo_url' | 'sort_order'
+>
+
+export type DashboardBarber = Omit<Barber, 'user_id'>
+
 export interface BarberSchedule {
   id: string
   barber_id: string

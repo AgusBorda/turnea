@@ -493,6 +493,13 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 
 **Estado:** ✅ S1–S6 completadas
 
+#### 🚧 Modernización de Barberos
+
+* [x] Barberos B1 — Auditoría UX/UI y propuesta
+* [ ] Barberos B2A — Privacidad pública en progreso: RPCs aditivas y Booking/Checkout migrados; deploy coordinado y restricción final pendientes
+
+**Estado:** B2A en progreso; modernización visual y lifecycle pendientes.
+
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 
 * [x] 9F.1 — Foundations visuales reutilizables

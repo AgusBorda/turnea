@@ -140,19 +140,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Servicio no encontrado, inactivo o inválido' }, { status: 404 })
   }
 
-  const { data: barber, error: barberError } = await supabase
-    .from('barbers')
-    .select('id, active')
-    .eq('id', barberId)
-    .eq('barbershop_id', barbershopId)
-    .eq('active', true)
-    .maybeSingle()
+  const { data: barberIsActive, error: barberError } = await supabase.rpc(
+    'is_public_barber_active',
+    {
+      p_barbershop_id: barbershopId,
+      p_barber_id: barberId,
+    }
+  )
 
   if (barberError) {
     return NextResponse.json({ error: 'No se pudo validar el barbero' }, { status: 500 })
   }
 
-  if (!barber) {
+  if (barberIsActive !== true) {
     return NextResponse.json({ error: 'Barbero no encontrado, inactivo o inválido' }, { status: 404 })
   }
 

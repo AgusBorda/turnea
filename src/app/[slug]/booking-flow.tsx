@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { Barbershop, Barber, Service, TimeSlot } from '@/lib/types'
+import { Barbershop, PublicBarber, Service, TimeSlot } from '@/lib/types'
 import { formatPrice, formatDuration } from '@/lib/utils'
 import {
   addCalendarDays,
@@ -21,7 +21,7 @@ type BookingBarbershop = Pick<
 
 interface Props {
   barbershop: BookingBarbershop
-  barbers: Barber[]
+  barbers: PublicBarber[]
   services: Service[]
   mpConfigured: boolean
 }
@@ -31,7 +31,7 @@ type Step = 'service' | 'barber' | 'date' | 'time' | 'confirm'
 export default function BookingFlow({ barbershop, barbers, services, mpConfigured }: Props) {
   const [step, setStep] = useState<Step>('service')
   const [selectedService, setSelectedService] = useState<Service | null>(null)
-  const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null)
+  const [selectedBarber, setSelectedBarber] = useState<PublicBarber | null>(null)
   const [selectedDate, setSelectedDate] = useState<LocalDate | null>(null)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
@@ -99,7 +99,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     }
   }
 
-  function selectBarber(barber: Barber) {
+  function selectBarber(barber: PublicBarber) {
     setSelectedBarber(barber)
     setStep('date')
   }

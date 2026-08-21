@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Barber } from '@/lib/types'
+import { DashboardBarber } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { Plus, Pencil, Trash2, X, User, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -9,13 +9,13 @@ import Link from 'next/link'
 
 interface Props {
   barbershopId: string
-  initialBarbers: Barber[]
+  initialBarbers: DashboardBarber[]
 }
 
 export default function BarbersManager({ barbershopId, initialBarbers }: Props) {
-  const [barbers, setBarbers] = useState<Barber[]>(initialBarbers)
+  const [barbers, setBarbers] = useState<DashboardBarber[]>(initialBarbers)
   const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing] = useState<Barber | null>(null)
+  const [editing, setEditing] = useState<DashboardBarber | null>(null)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
@@ -29,7 +29,7 @@ export default function BarbersManager({ barbershopId, initialBarbers }: Props) 
     setShowForm(true)
   }
 
-  function openEdit(barber: Barber) {
+  function openEdit(barber: DashboardBarber) {
     setEditing(barber)
     setName(barber.name)
     setBio(barber.bio || '')
