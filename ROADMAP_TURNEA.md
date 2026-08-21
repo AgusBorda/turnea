@@ -474,6 +474,25 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 
 **Estado:** ✅ S1–S5 completadas
 
+#### ✅ Modernización de Servicios
+
+* [x] Servicios S1 — Auditoría UX/UI y propuesta
+* [x] Servicios S2 — Base visual y listado moderno validados
+* [x] Servicios S3 — Formulario Nuevo/Editar validado visual y funcionalmente
+* [x] Servicios S4 — Lifecycle Desactivar/Reactivar aprobado visual y funcionalmente
+* [x] Servicios S5 — Responsive y accesibilidad final validados
+* [x] Servicios S6 — Validación funcional y cierre técnico
+
+**Resultado:**
+* Listado moderno separado entre servicios activos e inactivos, con estados vacíos cuidados.
+* Formulario accesible y responsive para crear y editar servicios activos o inactivos.
+* Lifecycle owner mediante desactivación y reactivación, sin eliminar servicios ni modificar turnos históricos.
+* Feedback mediante validaciones inline, estados de carga y toasts de éxito o error.
+* Menús y dialogs operables con teclado, foco visible y adaptación a viewports pequeños.
+* Foundation compartida con cursor de texto y caret visible en inputs claros.
+
+**Estado:** ✅ S1–S6 completadas
+
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 
 * [x] 9F.1 — Foundations visuales reutilizables

@@ -42,6 +42,15 @@ body {
 
 /* Progressive polish for native date/time controls. Unsupported browsers
    keep their native indicator and behavior unchanged. */
+.turnea-input {
+  cursor: text;
+  caret-color: var(--primary);
+}
+
+.turnea-input:disabled {
+  cursor: not-allowed;
+}
+
 .turnea-input::-webkit-calendar-picker-indicator {
   cursor: pointer;
   opacity: 0.55;
