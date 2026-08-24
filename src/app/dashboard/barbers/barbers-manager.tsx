@@ -17,6 +17,7 @@ export default function BarbersManager({ barbershopId, initialBarbers }: Props) 
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<DashboardBarber | null>(null)
   const [loading, setLoading] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   const router = useRouter()
 
   const [name, setName] = useState('')
@@ -26,6 +27,7 @@ export default function BarbersManager({ barbershopId, initialBarbers }: Props) 
     setEditing(null)
     setName('')
     setBio('')
+    setFormError(null)
     setShowForm(true)
   }
 
@@ -33,12 +35,14 @@ export default function BarbersManager({ barbershopId, initialBarbers }: Props) 
     setEditing(barber)
     setName(barber.name)
     setBio(barber.bio || '')
+    setFormError(null)
     setShowForm(true)
   }
 
   async function handleSave() {
-    if (!name.trim()) return
+    if (loading || !name.trim()) return
     setLoading(true)
+    setFormError(null)
 
     const supabase = createClient()
 
@@ -53,24 +57,26 @@ export default function BarbersManager({ barbershopId, initialBarbers }: Props) 
       }
     } else {
       const { data, error } = await supabase
-        .from('barbers')
-        .insert({ barbershop_id: barbershopId, name: name.trim(), bio: bio.trim() || null, sort_order: barbers.length })
-        .select()
+        .rpc('create_barber_with_default_schedule', {
+          p_barbershop_id: barbershopId,
+          p_name: name,
+          p_bio: bio || null,
+        })
         .single()
 
-      if (!error && data) {
-        setBarbers([...barbers, data])
-
-        // Crear schedule por defecto (Lun-Sáb 9 a 20)
-        const defaultSchedule = [1, 2, 3, 4, 5, 6].map(day => ({
-          barber_id: data.id,
-          day_of_week: day,
-          start_time: '09:00:00',
-          end_time: '20:00:00',
-          is_working: true,
-        }))
-        await supabase.from('barber_schedules').insert(defaultSchedule)
+      if (error || !data) {
+        setFormError(
+          error?.message.includes('INVALID_BARBER_NAME')
+            ? 'Ingresá un nombre válido de hasta 120 caracteres.'
+            : error?.message.includes('INVALID_BARBER_BIO')
+              ? 'La bio no puede superar los 500 caracteres.'
+              : 'No se pudo crear el barbero. Revisá los datos o recargá para comprobar si ya fue creado.'
+        )
+        setLoading(false)
+        return
       }
+
+      setBarbers([...barbers, data as DashboardBarber])
     }
 
     setShowForm(false)
@@ -166,6 +172,12 @@ export default function BarbersManager({ barbershopId, initialBarbers }: Props) 
                 />
               </div>
             </div>
+
+            {formError && (
+              <p role="alert" className="mt-3 text-sm text-red-600">
+                {formError}
+              </p>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button

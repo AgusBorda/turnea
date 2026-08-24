@@ -496,9 +496,19 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 #### 🚧 Modernización de Barberos
 
 * [x] Barberos B1 — Auditoría UX/UI y propuesta
-* [ ] Barberos B2A — Privacidad pública en progreso: RPCs aditivas y Booking/Checkout migrados; deploy coordinado y restricción final pendientes
+* [x] Barberos B2A — Privacidad pública
+  * Booking usa `get_public_barbers()` y recibe únicamente datos públicos mínimos de barberos activos.
+  * Checkout valida pertenencia y estado mediante `is_public_barber_active()`.
+  * `anon` ya no puede ejecutar `SELECT` directo sobre `public.barbers`.
+  * La gestión owner autenticada continúa operativa en Dashboard y Disponibilidad.
+  * Booking y Checkout fueron validados en Vercel Preview contra Supabase DEV.
+  * Other-owner permanece protegido por `owner_id = auth.uid()`; no se creó un fixture E2E artificial.
+  * Supabase PROD permanece intacto.
+* [ ] Barberos B2B — Creación atómica de barbero y horarios default en progreso
+  * RPC owner aditiva aplicada en Supabase DEV y UI migrada localmente.
+  * Pendientes: deploy Preview, pruebas owner/concurrencia/rollback y retiro coordinado del `INSERT` directo.
 
-**Estado:** B2A en progreso; modernización visual y lifecycle pendientes.
+**Estado:** B2A completada; B2B en progreso. Modernización visual y lifecycle pendientes.
 
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 
