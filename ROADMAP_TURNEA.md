@@ -512,8 +512,15 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
   * La RPC continuó funcionando después de la restricción y creó lunes–sábado de 09:00 a 20:00.
   * Alta, Disponibilidad, Booking y Agenda fueron validados en Vercel Preview.
   * Supabase PROD permanece intacto.
+* [x] Barberos B3 — Modernización visual
+  * Listado compacto separado entre barberos activos e inactivos, con estados vacíos cuidados.
+  * Acceso visible a Disponibilidad para barberos activos e inactivos.
+  * Menú de acciones accesible y modales modernos para crear, editar y confirmar la desactivación.
+  * Lifecycle de desactivar/reactivar con feedback claro y sin eliminar historial.
+  * Experiencia responsive, navegación por teclado, foco y Escape validados.
+  * Revisión visual y funcional aprobada para alta, edición, lifecycle y disponibilidad.
 
-**Estado:** B2A y B2B completadas. Modernización visual y lifecycle pendientes.
+**Estado:** ✅ B1–B3 completadas
 
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 

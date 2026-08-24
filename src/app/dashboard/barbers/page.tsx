@@ -28,11 +28,10 @@ export default async function BarbersPage() {
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Barberos</h1>
+    <div className="mx-auto w-full max-w-4xl">
       <BarbersManager
         barbershopId={barbershop.id}
-        initialBarbers={(barbers || []).filter(barber => barber.active)}
+        initialBarbers={barbers || []}
       />
     </div>
   )
