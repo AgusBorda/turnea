@@ -504,11 +504,16 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
   * Booking y Checkout fueron validados en Vercel Preview contra Supabase DEV.
   * Other-owner permanece protegido por `owner_id = auth.uid()`; no se creó un fixture E2E artificial.
   * Supabase PROD permanece intacto.
-* [ ] Barberos B2B — Creación atómica de barbero y horarios default en progreso
-  * RPC owner aditiva aplicada en Supabase DEV y UI migrada localmente.
-  * Pendientes: deploy Preview, pruebas owner/concurrencia/rollback y retiro coordinado del `INSERT` directo.
+* [x] Barberos B2B — Creación atómica de barbero y horarios default
+  * Barbero y seis schedules default se crean dentro de una única transacción PostgreSQL.
+  * El lock por barbería serializa altas concurrentes y protege el cálculo de `sort_order` incluyendo activos e inactivos.
+  * La atomicidad y el rollback completo ante un fallo de schedules fueron validados en Supabase DEV.
+  * El `INSERT` directo autenticado sobre `public.barbers` fue revocado; el alta owner usa exclusivamente `create_barber_with_default_schedule()`.
+  * La RPC continuó funcionando después de la restricción y creó lunes–sábado de 09:00 a 20:00.
+  * Alta, Disponibilidad, Booking y Agenda fueron validados en Vercel Preview.
+  * Supabase PROD permanece intacto.
 
-**Estado:** B2A completada; B2B en progreso. Modernización visual y lifecycle pendientes.
+**Estado:** B2A y B2B completadas. Modernización visual y lifecycle pendientes.
 
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 
