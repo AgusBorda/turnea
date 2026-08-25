@@ -519,8 +519,17 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
   * Lifecycle de desactivar/reactivar con feedback claro y sin eliminar historial.
   * Experiencia responsive, navegación por teclado, foco y Escape validados.
   * Revisión visual y funcional aprobada para alta, edición, lifecycle y disponibilidad.
+* [x] Barberos B4 — Seguridad de permisos
+  * `DELETE` físico revocado y cascadas de appointments, schedules y blocked slots protegidas frente a borrados owner.
+  * `INSERT` directo continúa revocado; el alta usa exclusivamente `create_barber_with_default_schedule()`.
+  * Owner conserva únicamente `SELECT` por ownership y `UPDATE(name, bio, active)`.
+  * Policies owner separadas y explícitas para `SELECT` y `UPDATE`; no existen policies de `INSERT` ni `DELETE`.
+  * `service_role` permanece intacto.
+  * RPC de creación, permisos técnicos y aislamiento cross-owner validados en Supabase DEV.
+  * Regresión de listado, alta, edición, lifecycle, Disponibilidad y Booking aprobada en Vercel Preview.
+  * Supabase PROD permanece intacto.
 
-**Estado:** ✅ B1–B3 completadas
+**Estado:** ✅ B1–B4 completadas
 
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 
