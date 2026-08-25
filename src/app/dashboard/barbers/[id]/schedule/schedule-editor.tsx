@@ -8,6 +8,7 @@ import { Minus, Save } from 'lucide-react'
 import Button from '@/components/ui/button'
 import FormField from '@/components/ui/form-field'
 import TimePicker from '@/components/ui/time-picker'
+import { ToastViewport, useToast } from '@/components/ui/toast'
 
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const DAY_LABELS = ['D', 'L', 'M', 'X', 'J', 'V', 'S']
@@ -28,7 +29,9 @@ export default function ScheduleEditor({ barberId, initialSchedules }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState(1)
+  const { toasts, showToast, dismissToast } = useToast()
 
   // Initialize schedule for all 7 days
   const [schedule, setSchedule] = useState<DaySchedule[]>(() => {
@@ -53,34 +56,44 @@ export default function ScheduleEditor({ barberId, initialSchedules }: Props) {
   async function handleSave() {
     setLoading(true)
     setSaved(false)
+    setErrorMessage(null)
 
-    const supabase = createClient()
+    try {
+      const invalidDay = schedule.find(day => (
+        day.is_working && (!day.start_time || !day.end_time || day.start_time >= day.end_time)
+      ))
 
-    // Delete all existing schedules for this barber
-    await supabase
-      .from('barber_schedules')
-      .delete()
-      .eq('barber_id', barberId)
+      if (invalidDay) {
+        setSelectedDay(invalidDay.day_of_week)
+        setErrorMessage('El horario de inicio debe ser anterior al horario de fin.')
+        return
+      }
 
-    // Insert new schedules
-    const schedulesToInsert = schedule.map(s => ({
-      barber_id: barberId,
-      day_of_week: s.day_of_week,
-      is_working: s.is_working,
-      start_time: `${s.start_time}:00`,
-      end_time: `${s.end_time}:00`,
-    }))
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('replace_barber_weekly_schedule', {
+        p_barber_id: barberId,
+        p_schedule: schedule.map(day => ({
+          day_of_week: day.day_of_week,
+          is_working: day.is_working,
+          start_time: day.is_working ? day.start_time : null,
+          end_time: day.is_working ? day.end_time : null,
+        })),
+      })
 
-    const { error } = await supabase
-      .from('barber_schedules')
-      .insert(schedulesToInsert)
+      if (error || data !== 7) {
+        throw new Error(error?.message || 'WEEKLY_SCHEDULE_REPLACE_FAILED')
+      }
 
-    if (!error) {
       setSaved(true)
+      showToast({ message: 'Horarios guardados', tone: 'success' })
       router.refresh()
+    } catch {
+      const message = 'No pudimos guardar los horarios. Revisalos e intentá nuevamente.'
+      setErrorMessage(message)
+      showToast({ message, tone: 'error' })
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   const selectedSchedule = schedule.find(day => day.day_of_week === selectedDay)!
@@ -183,6 +196,12 @@ export default function ScheduleEditor({ barberId, initialSchedules }: Props) {
         <Save className="h-4 w-4" aria-hidden="true" />
         {loading ? 'Guardando...' : 'Guardar horarios'}
       </Button>
+      {errorMessage && (
+        <p className="mt-3 text-sm font-medium text-red-600" role="alert">
+          {errorMessage}
+        </p>
+      )}
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

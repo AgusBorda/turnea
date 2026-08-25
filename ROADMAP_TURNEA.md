@@ -536,6 +536,10 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
   * La reactivación conserva schedules, appointments, blocked slots, configuración e historial.
   * Booking continúa siendo active-only antes y después de la reactivación.
   * Regresión funcional aprobada en Vercel Preview; Supabase PROD permanece intacto.
+* [ ] Barberos B6 — Horarios semanales atómicos
+  * RPC owner atómica, validación server-side, constraint único y escrituras directas autenticadas retiradas.
+  * Semana completa, días no laborables, permisos, ownership, barbero inactivo, rollback y concurrencia validados en Supabase DEV.
+  * Regresión funcional en Vercel Preview pendiente; Supabase PROD permanece intacto.
 
 **Estado:** ✅ B1–B5 completadas
 
