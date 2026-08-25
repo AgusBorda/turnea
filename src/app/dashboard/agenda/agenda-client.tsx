@@ -456,7 +456,7 @@ function DayView({ appointments, blockedSlots, date, timezone, now, barberNames,
                   }}>
                   <p className="font-bold leading-tight">{apt.start_time.slice(0, 5)} - {apt.end_time.slice(0, 5)}</p>
                   {height > 32 && <p className="truncate leading-tight mt-0.5">{pendingPaymentState === 'expired' ? 'Pago vencido' : apt.client_name || 'Sin nombre'}</p>}
-                  {height > 50 && <p className="truncate leading-tight opacity-70">{apt.services?.name} · {apt.barbers?.name}</p>}
+                  {height > 50 && <p className="truncate leading-tight opacity-70">{apt.services?.name} · {barberNames[apt.barber_id] || apt.barbers?.name}</p>}
                 </button>
               )
             })}
@@ -790,6 +790,7 @@ function MonthView({ appointments, blockedSlots, currentDate, timezone, now, bar
 }
 
 export default function AgendaClient({ barbershopId, timezone, barbers, services, barberSchedules }: Props) {
+  const activeBarbers = barbers.filter(barber => barber.active)
   const now = useMinuteNow()
   const { toasts, showToast, dismissToast } = useToast()
   const [view, setView] = useState<View>('day')
@@ -807,7 +808,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
   const [actionLoading, setActionLoading] = useState(false)
   const [newDate, setNewDate] = useState('')
   const [newTime, setNewTime] = useState('09:00')
-  const [newBarberId, setNewBarberId] = useState(barbers[0]?.id || '')
+  const [newBarberId, setNewBarberId] = useState(activeBarbers[0]?.id || '')
   const [newServiceId, setNewServiceId] = useState(services[0]?.id || '')
   const [newClientName, setNewClientName] = useState('')
   const [newClientPhone, setNewClientPhone] = useState('')
@@ -864,15 +865,28 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
     return () => window.clearTimeout(timeoutId)
   }, [fetchAgendaData])
 
+  const agendaBarberIds = new Set([
+    ...activeBarbers.map(barber => barber.id),
+    ...appointments.map(appointment => appointment.barber_id),
+    ...blockedSlots.map(block => block.barber_id),
+  ])
+  const agendaBarbers = barbers.filter(barber => agendaBarberIds.has(barber.id))
+  const agendaSchedules = barberSchedules.filter(schedule => agendaBarberIds.has(schedule.barber_id))
+  const effectiveSelectedBarberId = selectedBarberId === 'all' || agendaBarberIds.has(selectedBarberId)
+    ? selectedBarberId
+    : 'all'
   const filteredAgendaData = filterAgendaData(
     appointments,
     blockedSlots,
-    barberSchedules,
-    selectedBarberId
+    agendaSchedules,
+    effectiveSelectedBarberId
   )
-  const barberNames = Object.fromEntries(barbers.map(barber => [barber.id, barber.name]))
-  const showBarberName = selectedBarberId === 'all'
-  const barberOptions = barbers.map(barber => ({ id: barber.id, label: barber.name }))
+  const barberNames = Object.fromEntries(barbers.map(barber => [
+    barber.id,
+    barber.active ? barber.name : `${barber.name} (inactivo)`,
+  ]))
+  const showBarberName = effectiveSelectedBarberId === 'all'
+  const barberOptions = activeBarbers.map(barber => ({ id: barber.id, label: barber.name }))
   const serviceOptions = services.map(service => ({
     id: service.id,
     label: service.name,
@@ -925,6 +939,9 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
 
   function openNewAppointmentModal() {
     setNewDate(currentDate)
+    if (!activeBarbers.some(barber => barber.id === newBarberId)) {
+      setNewBarberId(activeBarbers[0]?.id || '')
+    }
     setNewFormError(null)
     setShowNewForm(true)
   }
@@ -1001,6 +1018,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
           <Button
             type="button"
             onClick={openNewAppointmentModal}
+            disabled={activeBarbers.length === 0}
             className="min-h-10 shrink-0 px-3 sm:min-h-11 sm:px-4"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
@@ -1056,26 +1074,26 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
         </div>
       </div>
 
-      {barbers.length >= 2 && (
+      {agendaBarbers.length >= 2 && (
         <div className="-mx-1 mb-4 overflow-x-auto overscroll-x-contain px-1 pb-1" aria-label="Filtrar agenda por barbero" tabIndex={0}>
           <div className="flex min-w-max gap-1.5" role="group">
             <button
               type="button"
               onClick={() => setSelectedBarberId('all')}
-              aria-pressed={selectedBarberId === 'all'}
-              className={`min-h-10 rounded-full border px-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${selectedBarberId === 'all' ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--border)] bg-white text-[var(--muted)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]'}`}
+              aria-pressed={effectiveSelectedBarberId === 'all'}
+              className={`min-h-10 rounded-full border px-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${effectiveSelectedBarberId === 'all' ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--border)] bg-white text-[var(--muted)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]'}`}
             >
               Todos
             </button>
-            {barbers.map(barber => (
+            {agendaBarbers.map(barber => (
               <button
                 key={barber.id}
                 type="button"
                 onClick={() => setSelectedBarberId(barber.id)}
-                aria-pressed={selectedBarberId === barber.id}
-                className={`min-h-10 rounded-full border px-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${selectedBarberId === barber.id ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--border)] bg-white text-[var(--muted)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]'}`}
+                aria-pressed={effectiveSelectedBarberId === barber.id}
+                className={`min-h-10 rounded-full border px-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${effectiveSelectedBarberId === barber.id ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--border)] bg-white text-[var(--muted)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]'}`}
               >
-                {barber.name}
+                {barber.name}{!barber.active && <span className="ml-1 text-xs font-medium opacity-70">· Inactivo</span>}
               </button>
             ))}
           </div>
@@ -1262,7 +1280,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
               {([
                 ['Cliente', selectedApt.client_name || 'Sin nombre'],
                 ['Servicio', selectedApt.services?.name || '-'],
-                ['Barbero', selectedApt.barbers?.name || '-'],
+                ['Barbero', barberNames[selectedApt.barber_id] || selectedApt.barbers?.name || '-'],
                 ['Horario', `${selectedApt.start_time.slice(0, 5)} - ${selectedApt.end_time.slice(0, 5)}`],
               ] as [string, string][]).map(([label, value]) => (
                 <div key={label} className="flex justify-between">

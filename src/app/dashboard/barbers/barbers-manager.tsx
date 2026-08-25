@@ -278,7 +278,7 @@ export default function BarbersManager({ barbershopId, initialBarbers }: Props) 
             </div>
             <h2 id="deactivate-barber-title" className="mt-4 text-lg font-semibold">¿Desactivar barbero?</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              {pendingDeactivation.name} dejará de aparecer en Booking y no podrá recibir nuevas reservas. Sus turnos e historial no se eliminan.
+              {pendingDeactivation.name} dejará de aparecer en Booking y no podrá recibir nuevas reservas. Los turnos ya existentes, incluidos los próximos, seguirán visibles en Agenda. Su historial y disponibilidad no se eliminan.
             </p>
             {deactivationError && <p role="alert" className="mt-3 text-sm text-red-600">{deactivationError}</p>}
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -528,8 +528,16 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
   * RPC de creación, permisos técnicos y aislamiento cross-owner validados en Supabase DEV.
   * Regresión de listado, alta, edición, lifecycle, Disponibilidad y Booking aprobada en Vercel Preview.
   * Supabase PROD permanece intacto.
+* [x] Barberos B5 — Continuidad al desactivar
+  * Agenda distingue `activeBarbers` para nuevas acciones y `agendaBarbers` para representar datos existentes.
+  * Appointments, bloqueos e identidad de barberos inactivos siguen visibles y filtrables en Día, Semana y Mes.
+  * El modal Nuevo turno continúa ofreciendo exclusivamente barberos activos.
+  * Blocked slots y vacaciones pueden configurarse mientras el barbero está inactivo, sin relajar ownership ni conflictos.
+  * La reactivación conserva schedules, appointments, blocked slots, configuración e historial.
+  * Booking continúa siendo active-only antes y después de la reactivación.
+  * Regresión funcional aprobada en Vercel Preview; Supabase PROD permanece intacto.
 
-**Estado:** ✅ B1–B4 completadas
+**Estado:** ✅ B1–B5 completadas
 
 #### ✅ Etapa 9F — Visual polish de Disponibilidad
 

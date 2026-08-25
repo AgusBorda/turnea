@@ -28,7 +28,6 @@ export default async function AgendaPage() {
       .from('barbers')
       .select('id, name, active')
       .eq('barbershop_id', barbershop.id)
-      .eq('active', true)
       .order('sort_order'),
 
     supabase
