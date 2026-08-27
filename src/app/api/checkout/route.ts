@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isLocalSlotInPast } from '@/lib/datetime'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import type { PublicBarbershopCheckoutConfig } from '@/lib/types'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -105,12 +106,10 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createClient()
 
-  const { data: barbershop, error: barbershopError } = await supabase
-    .from('barbershops')
-    .select('id, slug, name, currency, timezone, deposit_required, deposit_percentage, mp_configured, active')
-    .eq('id', barbershopId)
-    .eq('active', true)
+  const { data: barbershopData, error: barbershopError } = await supabase
+    .rpc('get_public_barbershop_checkout_config', { p_barbershop_id: barbershopId })
     .maybeSingle()
+  const barbershop = barbershopData as PublicBarbershopCheckoutConfig | null
 
   if (barbershopError) {
     return NextResponse.json({ error: 'No se pudo validar la barbería' }, { status: 500 })

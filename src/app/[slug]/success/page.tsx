@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 
 import { formatLocalDate } from '@/lib/datetime'
 import { createClient } from '@/lib/supabase/server'
+import type { PublicBarbershop } from '@/lib/types'
 import PaymentStatusPolling from './payment-status-polling'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -41,11 +42,10 @@ export default async function SuccessPage({ params, searchParams }: PageProps) {
   }
 
   const supabase = await createClient()
-  const { data: barbershop, error: barbershopError } = await supabase
-    .from('barbershops')
-    .select('id, name, slug, address, phone')
-    .eq('slug', slug)
+  const { data: barbershopData, error: barbershopError } = await supabase
+    .rpc('get_public_barbershop_by_slug', { p_slug: slug })
     .maybeSingle()
+  const barbershop = barbershopData as PublicBarbershop | null
 
   if (barbershopError) {
     return <ErrorCard slug={slug} message="No pudimos consultar el estado de tu reserva." />

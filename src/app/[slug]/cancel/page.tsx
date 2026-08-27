@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { createClient } from '@/lib/supabase/server'
+import type { PublicBarbershop } from '@/lib/types'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -28,11 +29,10 @@ export default async function CancelPage({ params, searchParams }: PageProps) {
   const { external_reference: appointmentId } = await searchParams
   const supabase = await createClient()
 
-  const { data: barbershop, error: barbershopError } = await supabase
-    .from('barbershops')
-    .select('id, slug')
-    .eq('slug', slug)
+  const { data: barbershopData, error: barbershopError } = await supabase
+    .rpc('get_public_barbershop_by_slug', { p_slug: slug })
     .maybeSingle()
+  const barbershop = barbershopData as PublicBarbershop | null
 
   if (barbershopError) {
     return <GenericCard slug={slug} />

@@ -653,13 +653,40 @@ master
 
 ---
 
+### 🚧 Core Security — Barbershops y clientes legacy
+
+#### 🚧 Core Security S1 — Barbershops
+
+* [x] Auditar grants, policies, consumidores y cascadas efectivas.
+* [x] Crear contratos RPC públicos mínimos para lectura por slug y configuración de Checkout.
+* [x] Reemplazar la policy owner `FOR ALL` por policies explícitas de `SELECT`, `INSERT` y `UPDATE`.
+* [x] Limitar `INSERT` y `UPDATE` owner a las columnas usadas por onboarding y Settings.
+* [x] Revocar `DELETE`, `TRUNCATE`, `REFERENCES` y `TRIGGER` a roles cliente.
+* [x] Migrar localmente Booking, Checkout, Success, Cancel y polling a las RPC públicas.
+* [x] Validar migration aditiva y permisos en Supabase DEV.
+* [ ] Validar regresión en Vercel Preview.
+* [ ] Aplicar en DEV la migration restrictiva que retira el `SELECT` público directo.
+* [ ] Revalidar RPCs públicas, Dashboard, Settings, onboarding, Booking y Checkout.
+
+#### 🚧 Core Security S2 — Legacy clients
+
+* [x] Confirmar ausencia de consumidores productivos de `clients` y `client_barbershop`.
+* [x] Retirar policies públicas y owner legacy.
+* [x] Revocar todo acceso directo de `PUBLIC`, `anon` y `authenticated`.
+* [x] Mantener las tablas dormidas y disponibles únicamente para uso técnico de `service_role`.
+* [x] Validar permisos efectivos y ausencia de regresiones en Supabase DEV.
+
+> Supabase PROD permanece intacto. S1/S2 no se consideran completas hasta finalizar pruebas técnicas DEV y regresión Preview.
+
+**Estado:** 🚧 Implementación local; pendiente validación DEV/Preview y restricción pública coordinada.
+
+---
+
 ## 📌 Ticket actual
 
-**Actual:** Ticket 8D.1 — Investigación HTTP 401 en refunds TEST.
+**Actual:** Core Security S1/S2 — Hardening de `barbershops`, `clients` y `client_barbershop`.
 
-**En paralelo:** Ticket 9C — Gestión por barbero.
-
-El bloqueo de 8D.1 sigue pendiente y debe resolverse antes de considerar 8D production-ready.
+**Siguiente:** Modernización y hardening específico de Servicios.
 
 ---
 

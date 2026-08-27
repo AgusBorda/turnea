@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { PublicBarber, Service } from '@/lib/types'
+import { PublicBarber, PublicBarbershop, Service } from '@/lib/types'
 import BookingFlow from './booking-flow'
 
 interface PageProps {
@@ -12,24 +12,10 @@ export default async function BarbershopPage({ params }: PageProps) {
   const supabase = await createClient()
 
   // Fetch barbershop
-  const { data: barbershop } = await supabase
-    .from('barbershops')
-    .select(`
-      id,
-      name,
-      description,
-      instagram,
-      logo_url,
-      slot_duration,
-      deposit_required,
-      deposit_percentage,
-      advance_booking_days,
-      timezone,
-      mp_configured
-    `)
-    .eq('slug', slug)
-    .eq('active', true)
-    .single()
+  const { data: barbershopData } = await supabase
+    .rpc('get_public_barbershop_by_slug', { p_slug: slug })
+    .maybeSingle()
+  const barbershop = barbershopData as PublicBarbershop | null
 
   if (!barbershop) notFound()
 

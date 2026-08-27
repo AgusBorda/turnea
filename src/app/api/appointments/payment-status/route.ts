@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { createClient } from '@/lib/supabase/server'
+import type { PublicBarbershop } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,11 +31,10 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await createClient()
-  const { data: barbershop, error: barbershopError } = await supabase
-    .from('barbershops')
-    .select('id')
-    .eq('slug', slug)
+  const { data: barbershopData, error: barbershopError } = await supabase
+    .rpc('get_public_barbershop_by_slug', { p_slug: slug })
     .maybeSingle()
+  const barbershop = barbershopData as PublicBarbershop | null
 
   if (barbershopError) {
     return json({ error: 'No se pudo consultar el estado' }, 500)

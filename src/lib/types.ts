@@ -37,6 +37,36 @@ export interface Barber {
   updated_at: string
 }
 
+export type PublicBarbershop = Pick<
+  Barbershop,
+  | 'id'
+  | 'name'
+  | 'slug'
+  | 'description'
+  | 'address'
+  | 'phone'
+  | 'instagram'
+  | 'logo_url'
+  | 'slot_duration'
+  | 'deposit_required'
+  | 'deposit_percentage'
+  | 'advance_booking_days'
+  | 'timezone'
+  | 'mp_configured'
+>
+
+export type PublicBarbershopCheckoutConfig = Pick<
+  Barbershop,
+  | 'id'
+  | 'slug'
+  | 'name'
+  | 'currency'
+  | 'timezone'
+  | 'deposit_required'
+  | 'deposit_percentage'
+  | 'mp_configured'
+>
+
 export type PublicBarber = Pick<
   Barber,
   'id' | 'name' | 'bio' | 'photo_url' | 'sort_order'
