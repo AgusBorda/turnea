@@ -653,9 +653,9 @@ master
 
 ---
 
-### 🚧 Core Security — Barbershops y clientes legacy
+### ✅ Core Security — Barbershops y clientes legacy
 
-#### 🚧 Core Security S1 — Barbershops
+#### ✅ Core Security S1 — Barbershops
 
 * [x] Auditar grants, policies, consumidores y cascadas efectivas.
 * [x] Crear contratos RPC públicos mínimos para lectura por slug y configuración de Checkout.
@@ -664,11 +664,11 @@ master
 * [x] Revocar `DELETE`, `TRUNCATE`, `REFERENCES` y `TRIGGER` a roles cliente.
 * [x] Migrar localmente Booking, Checkout, Success, Cancel y polling a las RPC públicas.
 * [x] Validar migration aditiva y permisos en Supabase DEV.
-* [ ] Validar regresión en Vercel Preview.
-* [ ] Aplicar en DEV la migration restrictiva que retira el `SELECT` público directo.
-* [ ] Revalidar RPCs públicas, Dashboard, Settings, onboarding, Booking y Checkout.
+* [x] Validar regresión en Vercel Preview.
+* [x] Aplicar en DEV la migration restrictiva que retira el `SELECT` público directo.
+* [x] Revalidar RPCs públicas, Dashboard, Settings, onboarding, Booking y Checkout.
 
-#### 🚧 Core Security S2 — Legacy clients
+#### ✅ Core Security S2 — Legacy clients
 
 * [x] Confirmar ausencia de consumidores productivos de `clients` y `client_barbershop`.
 * [x] Retirar policies públicas y owner legacy.
@@ -676,17 +676,24 @@ master
 * [x] Mantener las tablas dormidas y disponibles únicamente para uso técnico de `service_role`.
 * [x] Validar permisos efectivos y ausencia de regresiones en Supabase DEV.
 
-> Supabase PROD permanece intacto. S1/S2 no se consideran completas hasta finalizar pruebas técnicas DEV y regresión Preview.
+**Resultado:**
+* El `DELETE` físico owner fue revocado y la policy general `FOR ALL` fue eliminada.
+* Owner conserva policies explícitas de `SELECT`, `INSERT` y `UPDATE`, con escrituras limitadas a las columnas configurables.
+* Onboarding y Settings continúan operativos bajo el contrato owner de mínimo privilegio.
+* La superficie pública de barberías usa RPCs mínimas por slug y para configuración de Checkout; `anon` ya no puede ejecutar `SELECT` directo sobre `barbershops`.
+* Booking, Checkout, Success, Cancel y payment-status fueron validados después de la restricción.
+* El aislamiento cross-owner fue validado: un owner no puede leer la barbería ajena.
+* `clients` y `client_barbershop` permanecen dormidas, sin writes para `PUBLIC`, `anon` ni `authenticated`.
+* Pruebas técnicas en Supabase DEV y regresión funcional en Vercel Preview aprobadas.
+* Supabase PROD permanece intacto.
 
-**Estado:** 🚧 Implementación local; pendiente validación DEV/Preview y restricción pública coordinada.
+**Estado:** ✅ S1/S2 completadas
 
 ---
 
 ## 📌 Ticket actual
 
-**Actual:** Core Security S1/S2 — Hardening de `barbershops`, `clients` y `client_barbershop`.
-
-**Siguiente:** Modernización y hardening específico de Servicios.
+**Actual:** Modernización y hardening específico de Servicios.
 
 ---
 
