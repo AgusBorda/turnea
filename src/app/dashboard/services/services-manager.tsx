@@ -141,16 +141,13 @@ export default function ServicesManager({ barbershopId, initialServices }: Props
         showToast({ message: 'Servicio actualizado', tone: 'success' })
       } else {
         const { data, error } = await supabase
-          .from('services')
-          .insert({
-            barbershop_id: barbershopId,
-            name: values.name,
-            description: description.trim() || null,
-            duration: values.duration,
-            price: values.price,
-            sort_order: services.length,
+          .rpc('create_service', {
+            p_barbershop_id: barbershopId,
+            p_name: values.name,
+            p_description: description.trim() || null,
+            p_duration: values.duration,
+            p_price: values.price,
           })
-          .select()
           .single()
 
         if (error || !data) {
@@ -360,6 +357,7 @@ export default function ServicesManager({ barbershopId, initialServices }: Props
                     }}
                     className={`w-full ${inputClassName}`}
                     placeholder="Ej. Corte clásico"
+                    maxLength={120}
                     autoComplete="off"
                     disabled={loading}
                     aria-invalid={Boolean(formErrors.name)}
@@ -376,6 +374,7 @@ export default function ServicesManager({ barbershopId, initialServices }: Props
                     onChange={event => setDescription(event.target.value)}
                     className={`w-full ${inputClassName}`}
                     placeholder="Ej. Incluye lavado"
+                    maxLength={500}
                     disabled={loading}
                   />
                 </FormField>

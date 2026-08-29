@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isLocalSlotInPast } from '@/lib/datetime'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import type { PublicBarbershopCheckoutConfig } from '@/lib/types'
+import type { PublicBarbershopCheckoutConfig, PublicServiceCheckoutConfig } from '@/lib/types'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -123,13 +123,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Mercado Pago no está habilitado para esta barbería' }, { status: 400 })
   }
 
-  const { data: service, error: serviceError } = await supabase
-    .from('services')
-    .select('id, name, price, duration, active')
-    .eq('id', serviceId)
-    .eq('barbershop_id', barbershopId)
-    .eq('active', true)
+  const { data: serviceData, error: serviceError } = await supabase
+    .rpc('get_public_service_checkout_config', {
+      p_barbershop_id: barbershopId,
+      p_service_id: serviceId,
+    })
     .maybeSingle()
+  const service = serviceData as PublicServiceCheckoutConfig | null
 
   if (serviceError) {
     return NextResponse.json({ error: 'No se pudo validar el servicio' }, { status: 500 })

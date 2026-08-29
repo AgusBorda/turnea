@@ -97,6 +97,16 @@ export interface Service {
   updated_at: string
 }
 
+export type PublicService = Pick<
+  Service,
+  'id' | 'name' | 'description' | 'duration' | 'price' | 'sort_order'
+>
+
+export type PublicServiceCheckoutConfig = Pick<
+  Service,
+  'id' | 'name' | 'price' | 'duration'
+>
+
 export interface Client {
   id: string
   phone: string

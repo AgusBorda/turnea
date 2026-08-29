@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { PublicBarber, PublicBarbershop, Service } from '@/lib/types'
+import { PublicBarber, PublicBarbershop, PublicService } from '@/lib/types'
 import BookingFlow from './booking-flow'
 
 interface PageProps {
@@ -30,12 +30,15 @@ export default async function BarbershopPage({ params }: PageProps) {
   }
 
   // Fetch services
-  const { data: services } = await supabase
-    .from('services')
-    .select('*')
-    .eq('barbershop_id', barbershop.id)
-    .eq('active', true)
-    .order('sort_order')
+  const { data: servicesData, error: servicesError } = await supabase.rpc(
+    'get_public_services',
+    { p_barbershop_id: barbershop.id }
+  )
+
+  if (servicesError) {
+    throw new Error('Failed to load public services')
+  }
+  const services = (servicesData || []) as PublicService[]
 
   return (
     <main className="min-h-screen bg-[var(--secondary)]">
@@ -74,7 +77,7 @@ export default async function BarbershopPage({ params }: PageProps) {
         <BookingFlow
           barbershop={barbershop}
           barbers={(barbers || []) as PublicBarber[]}
-          services={(services || []) as Service[]}
+          services={services}
           mpConfigured={barbershop.mp_configured}
         />
       </div>

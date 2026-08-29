@@ -493,6 +493,31 @@ Objetivo: permitir ausencias, bloqueos horarios y vacaciones por barbero sin rom
 
 **Estado:** ✅ S1–S6 completadas
 
+#### 🚧 Seguridad e integridad de Servicios
+
+* [x] Services Security S1 — Auditar schema, grants, policies, consumidores e historial.
+* [x] Services Security S2 — Crear RPCs mínimas para Booking y Checkout.
+* [x] Services Security S3 — Crear `create_service()` con ownership, lock por barbería y `MAX(sort_order) + 1`.
+* [x] Services Security S4 — Revocar `DELETE`, `TRUNCATE`, `REFERENCES` y `TRIGGER` a roles cliente.
+* [x] Services Security S5 — Reemplazar la policy owner `FOR ALL` por policies explícitas de `SELECT`, `INSERT` temporal y `UPDATE`.
+* [x] Services Security S6 — Limitar `UPDATE` owner a `name`, `description`, `duration`, `price` y `active`.
+* [x] Services Security S7 — Validar constraints, concurrencia, ownership, lifecycle e historial en Supabase DEV.
+* [ ] Validar Servicios, Booking, Agenda y Checkout en Vercel Preview.
+* [ ] Aplicar en DEV la migration restrictiva que retira `SELECT` anon e `INSERT` owner directos.
+* [ ] Revalidar permisos finales, RPCs y regresión funcional post-restricción.
+
+**Resultado técnico DEV:**
+* `DELETE` físico owner y anon quedó bloqueado sin modificar appointments históricos.
+* La creación owner usa `create_service()` y serializa altas concurrentes mediante el lock de la barbería.
+* Dos altas simultáneas recibieron `sort_order` diferentes, considerando servicios activos e inactivos.
+* Las RPCs públicas exponen sólo servicios activos y las columnas necesarias para Booking/Checkout.
+* Edición, desactivación y reactivación conservan identidad, configuración y `service_id` históricos.
+* Campos internos como `barbershop_id` y `sort_order` no son actualizables directamente por el owner.
+* La migration restrictiva permanece versionada y pendiente hasta validar el nuevo código en Preview.
+* Supabase PROD permanece intacto.
+
+**Estado:** 🚧 Implementación y tests técnicos DEV completos; pendiente Preview y restricción coordinada.
+
 #### 🚧 Modernización de Barberos
 
 * [x] Barberos B1 — Auditoría UX/UI y propuesta
