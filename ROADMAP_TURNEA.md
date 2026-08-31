@@ -721,9 +721,39 @@ master
 
 ---
 
+### 🚧 Agenda/Appointments A1 — State machine hardening
+
+**Objetivo:** separar transiciones manuales owner de confirmaciones financieras y expiraciones del sistema.
+
+* [x] Auditar estados, consumidores, timestamps y permisos actuales.
+* [x] Definir una matriz explícita de transiciones owner.
+* [x] Mantener `pending_payment → confirmed` exclusivamente en la confirmación atómica de pagos.
+* [x] Mantener la expiración de pagos pendientes exclusivamente en cleanup.
+* [x] Serializar cambios owner con lock sobre el appointment.
+* [x] Preservar datos financieros al cancelar un turno pagado.
+* [x] Alinear acciones visibles de Agenda con la matriz owner.
+* [x] Retirar privilegios directos residuales y conservar sólo `SELECT` owner para `authenticated`.
+* [x] Aplicar y validar la migration en Supabase DEV.
+* [x] Probar transiciones permitidas, prohibidas, ownership y concurrencia en DEV.
+* [ ] Validar regresión de Agenda, Booking y pagos en Preview.
+
+**Matriz owner implementada localmente:**
+* `confirmed → completed | no_show | cancelled`.
+* `pending → completed | no_show | cancelled` para compatibilidad con registros legacy.
+* `pending_payment → cancelled`; nunca `confirmed`, `completed` ni `no_show` por owner.
+* `completed`, `no_show` y `cancelled` son terminales; repetir el mismo estado es un no-op idempotente.
+
+**Timestamps:** `cancelled` completa `cancelled_at` y `cancelled_by = owner`; `updated_at` continúa a cargo del trigger existente. El schema actual no posee `confirmed_at` ni `completed_at`.
+
+**Validado en DEV:** transiciones owner permitidas y prohibidas, no-op idempotente, owner ajeno, anon, `DELETE` directo revocado, preservación de datos financieros, confirmación por RPC de pagos y concurrencia con un único ganador. Una follow-up de mínimo privilegio retira además `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES` y `TRIGGER` directos de roles cliente, preservando únicamente `SELECT` owner para `authenticated`. Los fixtures temporales fueron eliminados.
+
+**Estado:** Implementado y validado en DEV; pendiente de regresión Preview. PROD intacto.
+
+---
+
 ## 📌 Ticket actual
 
-**Actual:** Servicios — MVP COMPLETE. Próximo módulo pendiente de definición.
+**Actual:** Agenda/Appointments A1 — State machine hardening. Pendiente de validación Preview.
 
 ---
 

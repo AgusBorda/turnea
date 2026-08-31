@@ -998,9 +998,13 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
       p_status: status,
     })
     if (error || !updated) {
-      window.alert('No se pudo actualizar el turno. IntentÃ¡ nuevamente.')
+      const message = error?.message === 'INVALID_APPOINTMENT_STATUS_TRANSITION'
+        ? 'El estado del turno cambió y esa acción ya no está disponible.'
+        : 'No se pudo actualizar el turno. Intentá nuevamente.'
+      showToast({ message, tone: 'error' })
     } else {
       setSelectedApt(null)
+      showToast({ message: 'Estado del turno actualizado', tone: 'success' })
       fetchAgendaData()
     }
     setActionLoading(false)
@@ -1304,7 +1308,7 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
                 </span>
               </div>
             </div>
-            {(selectedApt.status === 'confirmed' || selectedApt.status === 'pending' || selectedApt.status === 'pending_payment') && (
+            {(selectedApt.status === 'confirmed' || selectedApt.status === 'pending') && (
               <div className="mt-6 space-y-2">
                 <button onClick={() => updateStatus(selectedApt.id, 'completed')} disabled={actionLoading}
                   className="w-full flex items-center justify-center gap-2 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition-colors disabled:opacity-50">
@@ -1314,6 +1318,14 @@ export default function AgendaClient({ barbershopId, timezone, barbers, services
                   className="w-full flex items-center justify-center gap-2 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors disabled:opacity-50">
                   <Ban className="w-4 h-4" /> No se presento
                 </button>
+                <button onClick={() => updateStatus(selectedApt.id, 'cancelled')} disabled={actionLoading}
+                  className="w-full flex items-center justify-center gap-2 py-2 border border-red-300 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors disabled:opacity-50">
+                  <X className="w-4 h-4" /> Cancelar turno
+                </button>
+              </div>
+            )}
+            {selectedApt.status === 'pending_payment' && (
+              <div className="mt-6">
                 <button onClick={() => updateStatus(selectedApt.id, 'cancelled')} disabled={actionLoading}
                   className="w-full flex items-center justify-center gap-2 py-2 border border-red-300 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors disabled:opacity-50">
                   <X className="w-4 h-4" /> Cancelar turno
