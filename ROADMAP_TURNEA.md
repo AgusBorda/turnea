@@ -330,28 +330,29 @@ La base de datos acepta cualquier identificador IANA válido, aunque Settings of
 * Los retries no duplican la intención de reembolso.
 * UI de solicitud y verificación de reembolso.
 
-**Bloqueo E2E:**
-* `POST /v1/payments/{payment_id}/refunds` devuelve HTTP 401 en TEST.
-* GET payment, merchant order y refunds funcionan correctamente.
+**Bloqueo E2E externo/configuración:**
+* Un único `POST /v1/payments/{payment_id}/refunds` controlado devolvió HTTP 401, código 7: `Unauthorized use of live credentials`.
+* La referencia oficial de Mercado Pago clasifica esa respuesta como credencial sin el scope `payment` requerido.
+* El endpoint, método, formato Bearer, `X-Idempotency-Key` estable y body vacío de Turnea coinciden con la API oficial de refund total.
+* Con la misma credencial funcionan GET identity, payment, merchant order y refunds.
 * El owner del Access Token coincide con el collector del payment.
-* Las validaciones de appointment, payment, preference, monto y moneda son correctas.
+* El payment está `approved`/`accredited`, dentro de los 180 días, y coinciden appointment, preference, monto y moneda.
 * No existe un refund aprobado ni parcial previo.
-* La causa exacta del rechazo de Mercado Pago todavía no está resuelta.
-* Ningún refund TEST llegó todavía a `status = refunded`.
+* El rechazo ocurre antes de crear el refund; la conciliación conserva estado, appointment e idempotency key.
+* Ningún refund TEST llegó aún a `status = refunded` mediante la API de Turnea.
 
-Este bloqueo debe resolverse antes de considerar 8D production-ready.
+##### ✅ 8D.1 — Refund API blocked externally; workaround MVP documentado
 
-##### ⏳ 8D.1 — Resolver HTTP 401 de Mercado Pago al crear refund TEST
+* [x] Auditar el flujo owner → credencial privada → validaciones oficiales → refund → conciliación.
+* [x] Reproducir una sola vez el 401 con precondiciones verificadas y respuesta sanitizada.
+* [x] Confirmar endpoint, headers, body e idempotencia contra documentación oficial.
+* [x] Confirmar identidad token/collector y elegibilidad del payment.
+* [x] Confirmar que no hubo refund ni mutación local ante el rechazo.
+* [x] Definir workaround MVP: el owner reembolsa desde Mercado Pago y luego usa `Verificar estado` en Turnea.
+* [x] Mantener la conciliación abierta hasta que GET refunds confirme oficialmente el refund total.
+* [x] Mantener el appointment asociado intacto.
 
-* [ ] Revisar configuración y condiciones de la cuenta TEST.
-* [ ] Revisar documentación o soporte oficial de Mercado Pago.
-* [ ] Crear un payment TEST nuevo dedicado específicamente a refund, si hace falta.
-* [ ] Confirmar seller y buyer TEST correctos.
-* [ ] Ejecutar un único refund TEST.
-* [ ] Validar `status = refunded`.
-* [ ] Validar `mp_refund_id` y `refund_amount`.
-* [ ] Validar que el appointment permanezca intacto.
-* [ ] Validar retry e idempotencia posterior.
+Para habilitar el POST desde Turnea debe revisarse la credencial/aplicación con Mercado Pago usando el request ID del intento controlado. No se hará retry automático ni se considerará el refund confirmado sin verificación oficial.
 
 #### ⏳ Etapas pendientes
 
