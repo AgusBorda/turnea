@@ -760,9 +760,32 @@ master
 
 ---
 
+### 🚧 Production Readiness P1 — Dependency Security Hardening
+
+**Objetivo:** eliminar vulnerabilidades `HIGH` del árbol de dependencias de producción mediante una actualización mínima y verificable, sin introducir cambios funcionales ni desplegar a PROD.
+
+* [x] Auditar dependencias directas, transitivas y advisories de producción.
+* [x] Actualizar `next` y `eslint-config-next` de `16.2.7` a `16.3.4`.
+* [x] Actualizar transitivamente `postcss`, `nanoid` y `sharp` a versiones corregidas.
+* [x] Confirmar `npm audit --omit=dev` sin vulnerabilidades.
+* [x] Validar TypeScript, ESLint y build de producción.
+* [ ] Validar regresión funcional en Vercel Preview sobre `develop`.
+
+**Validación local:**
+* `npm audit --omit=dev`: 0 vulnerabilidades (`HIGH` y `CRITICAL`: 0).
+* React permanece en `19.2.4`; App Router, Turbopack, Supabase SSR, middleware y Route Handlers compilan sin cambios de código.
+* TypeScript y build aprobados; ESLint sin errores y con dos warnings preexistentes por uso de `<img>`.
+* La migración de la convención `middleware` a `proxy` sigue como deuda separada y no forma parte de este hardening.
+* El audit completo conserva vulnerabilidades `HIGH` sólo en tooling de desarrollo (`brace-expansion`, `browserslist` y `js-yaml`); no integran el runtime productivo.
+* Supabase DEV/PROD, migrations, Mercado Pago y lógica productiva permanecen intactos.
+
+**Estado:** 🚧 Implementado localmente; pendiente validación en Preview. PROD intacto.
+
+---
+
 ## 📌 Ticket actual
 
-**Actual:** Agenda / Appointments A1 — State machine hardening completado. Próximo módulo pendiente de definición.
+**Actual:** Production Readiness P1 — Dependency Security Hardening. Pendiente validación funcional en Vercel Preview.
 
 ---
 
