@@ -760,7 +760,7 @@ master
 
 ---
 
-### 🚧 Production Readiness P1 — Dependency Security Hardening
+### ✅ Production Readiness P1 — Dependency Security Hardening
 
 **Objetivo:** eliminar vulnerabilidades `HIGH` del árbol de dependencias de producción mediante una actualización mínima y verificable, sin introducir cambios funcionales ni desplegar a PROD.
 
@@ -769,23 +769,27 @@ master
 * [x] Actualizar transitivamente `postcss`, `nanoid` y `sharp` a versiones corregidas.
 * [x] Confirmar `npm audit --omit=dev` sin vulnerabilidades.
 * [x] Validar TypeScript, ESLint y build de producción.
-* [ ] Validar regresión funcional en Vercel Preview sobre `develop`.
+* [x] Validar instalación limpia y reproducible mediante `npm ci`.
+* [x] Validar regresión funcional en Vercel Preview sobre `develop`.
 
 **Validación local:**
 * `npm audit --omit=dev`: 0 vulnerabilidades (`HIGH` y `CRITICAL`: 0).
+* `npm ci` completó correctamente sin modificar `package.json` ni `package-lock.json`.
 * React permanece en `19.2.4`; App Router, Turbopack, Supabase SSR, middleware y Route Handlers compilan sin cambios de código.
 * TypeScript y build aprobados; ESLint sin errores y con dos warnings preexistentes por uso de `<img>`.
+* Login, Dashboard, Agenda, Barberos, Servicios, Disponibilidad, Settings, Booking, Checkout, Success y Cancel fueron validados en Vercel Preview.
+* Preview fue confirmado contra Supabase DEV.
 * La migración de la convención `middleware` a `proxy` sigue como deuda separada y no forma parte de este hardening.
 * El audit completo conserva vulnerabilidades `HIGH` sólo en tooling de desarrollo (`brace-expansion`, `browserslist` y `js-yaml`); no integran el runtime productivo.
 * Supabase DEV/PROD, migrations, Mercado Pago y lógica productiva permanecen intactos.
 
-**Estado:** 🚧 Implementado localmente; pendiente validación en Preview. PROD intacto.
+**Estado:** ✅ Completado. PROD intacto y pendiente de promoción deliberada.
 
 ---
 
 ## 📌 Ticket actual
 
-**Actual:** Production Readiness P1 — Dependency Security Hardening. Pendiente validación funcional en Vercel Preview.
+**Próximo:** Production Readiness P2 — PROD Baseline.
 
 ---
 
