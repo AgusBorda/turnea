@@ -721,7 +721,7 @@ master
 
 ---
 
-### 🚧 Agenda/Appointments A1 — State machine hardening
+### ✅ Agenda / Appointments A1 — State machine hardening
 
 **Objetivo:** separar transiciones manuales owner de confirmaciones financieras y expiraciones del sistema.
 
@@ -735,7 +735,7 @@ master
 * [x] Retirar privilegios directos residuales y conservar sólo `SELECT` owner para `authenticated`.
 * [x] Aplicar y validar la migration en Supabase DEV.
 * [x] Probar transiciones permitidas, prohibidas, ownership y concurrencia en DEV.
-* [ ] Validar regresión de Agenda, Booking y pagos en Preview.
+* [x] Validar regresión de Agenda, Booking y pagos en Preview.
 
 **Matriz owner implementada localmente:**
 * `confirmed → completed | no_show | cancelled`.
@@ -747,13 +747,22 @@ master
 
 **Validado en DEV:** transiciones owner permitidas y prohibidas, no-op idempotente, owner ajeno, anon, `DELETE` directo revocado, preservación de datos financieros, confirmación por RPC de pagos y concurrencia con un único ganador. Una follow-up de mínimo privilegio retira además `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, `REFERENCES` y `TRIGGER` directos de roles cliente, preservando únicamente `SELECT` owner para `authenticated`. Los fixtures temporales fueron eliminados.
 
-**Estado:** Implementado y validado en DEV; pendiente de regresión Preview. PROD intacto.
+**Resultado final:**
+* La matriz owner permite únicamente transiciones manuales explícitas y mantiene separados los cambios de payment/system.
+* `pending_payment` no puede confirmarse manualmente y los estados terminales no pueden revivir.
+* Las transiciones concurrentes se serializan mediante lock y se revalidan contra el estado vigente.
+* Los privilegios directos de `appointments` quedaron reducidos al mínimo necesario.
+* La cancelación persiste y preserva los datos financieros y las relaciones históricas del appointment.
+* Agenda, Booking, Checkout y el flujo de pagos fueron validados en Preview.
+* Supabase PROD permanece intacto.
+
+**Estado:** ✅ Completado
 
 ---
 
 ## 📌 Ticket actual
 
-**Actual:** Agenda/Appointments A1 — State machine hardening. Pendiente de validación Preview.
+**Actual:** Agenda / Appointments A1 — State machine hardening completado. Próximo módulo pendiente de definición.
 
 ---
 
