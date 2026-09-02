@@ -811,9 +811,90 @@ master
 
 ---
 
+### ✅ Production Readiness P3 — Build Clean Supabase PROD
+
+**Objetivo:** construir un entorno PROD limpio desde las migrations vigentes y validar el lanzamiento real de Turnea para un piloto controlado.
+
+* [x] Crear el nuevo Supabase PROD y aplicar las 32 migrations desde cero.
+* [x] Confirmar migration history Local/Remote alineado y `db push --dry-run` al día.
+* [x] Validar `pg_cron`, cleanup único, default privileges y grants RPC.
+* [x] Configurar Auth de PROD.
+* [x] Promover el release aprobado de `develop` a `master`.
+* [x] Conectar Vercel Production al nuevo Supabase PROD.
+* [x] Validar onboarding y operación owner en Production.
+* [x] Validar booking real sin seña.
+* [x] Validar pago real con seña y confirmación por webhook.
+
+**Validación final de Production:**
+* Supabase PROD limpio `epwftrxjbxneqlqqspyv` quedó con 32/32 migrations y sin cambios pendientes.
+* Vercel Production quedó operativo en `https://turnea.vercel.app`, con Auth y configuración de entorno productiva validados.
+* Landing, Login, Signup, onboarding, Dashboard, Agenda, Barberos, Servicios, Disponibilidad, Settings y Booking aprobaron el smoke test.
+* El primer turno real sin seña se creó correctamente.
+* Checkout Pro calculó y presentó correctamente la seña del primer pago real.
+* Mercado Pago acreditó el pago y la verificación productiva del webhook confirmó atómicamente el appointment.
+* El retorno desde Mercado Pago y el estado final Confirmado en Turnea fueron correctos.
+* La comisión y el plazo de acreditación de Mercado Pago se observaron como comportamiento esperado y quedan fuera de P3.
+* El refund mediante API conserva el workaround manual documentado.
+* El onboarding Mercado Pago multi-barbería no se considera resuelto y requiere arquitectura futura.
+
+**Estado:** ✅ Completado. PROD operativo para piloto controlado.
+
+---
+
+### ✅ P4 — Mercado Pago Processing Cost / Net Deposit Protection
+
+**Objetivo:** permitir que cada barbería defina quién absorbe el costo de procesamiento del pago online, manteniendo visible la seña nominal y congelando en cada appointment el desglose financiero usado por Mercado Pago.
+
+* [x] Configurar `processing_fee_mode` por barbería
+* [x] Soportar `barbershop_absorbs` y `customer_covers`
+* [x] Configurar settlement option y effective processing rate editable
+* [x] Calcular el costo con compensación inversa exacta, sin floating point como autoridad
+* [x] Persistir snapshot financiero inmutable por appointment
+* [x] Persistir `payment_total_amount` generado y `payment_currency`
+* [x] Cotizar server-side sin confiar en montos enviados por el browser
+* [x] Mostrar preview dinámico en Settings
+* [x] Mostrar seña, costo de procesamiento y total en Booking
+* [x] Crear el appointment de pago y su snapshot atómicamente en PostgreSQL
+* [x] Crear la preference de Mercado Pago usando `payment_total_amount`
+* [x] Validar webhook contra `payment_total_amount` y `payment_currency`
+* [x] Mantener HMAC, consulta oficial del payment y confirmación atómica
+* [x] Registrar conciliaciones de pagos tardíos por el total cobrado
+* [x] Mostrar el desglose completo en Success
+* [x] Mantener compatibilidad con appointments históricos sin processing fee
+
+**E2E real validado en DEV:**
+
+* Servicio: `15000.00`
+* Seña: `10%`
+* Effective rate: `4%`
+* `deposit_amount`: `1500.00`
+* `processing_fee_amount`: `62.50`
+* `payment_total_amount`: `1562.50`
+* Mercado Pago TEST cobró `1562.50`.
+* Webhook respondió `200`.
+* Appointment terminó `confirmed` y `deposit_status = paid`.
+* `mp_preference_id` y `mp_payment_id` quedaron registrados.
+* Success mostró seña, costo, total pagado y resto del servicio correctamente.
+
+**Deudas separadas no bloqueantes para el core DEV:**
+
+* **Refund policy:** definir si un refund devuelve el total cobrado, sólo la seña u otra combinación; la automatización continúa pendiente.
+* **Conciliación real:** comparar el processing fee estimado con el cargo real de Mercado Pago y obtener/netear cargos reales si la API lo permite.
+* **Presets:** definir tasas vigentes y su estrategia de mantenimiento.
+* **Checkout idempotency:** evitar appointments o preferences duplicados ante retries y respuestas ambiguas.
+* **Multi-seller Mercado Pago:** diseñar onboarding y manejo de múltiples barberías, aplicaciones y secrets.
+* **Legal/comercial:** validar `customer_covers` antes de habilitarlo ampliamente en producción.
+* **Analytics:** evaluar snapshot histórico del precio del servicio; el processing fee no debe mezclarse con revenue del servicio.
+
+**Estado DEV:** ✅ P4 CORE COMPLETE IN DEV.
+
+**Estado PROD:** ⏳ P4 PROD RELEASE — PENDING REVIEW. P4 todavía no fue desplegado en PROD; producción conserva el comportamiento anterior. El próximo paso es una release readiness review específica y `customer_covers` no debe promoverse antes de completarla.
+
+---
+
 ## 📌 Ticket actual
 
-**Próximo:** Production Readiness P3 — Build Clean Supabase PROD.
+**Próximo:** P4 PROD Release Readiness Review.
 
 ---
 

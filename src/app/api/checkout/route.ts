@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isLocalSlotInPast } from '@/lib/datetime'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import {
+  mercadoPagoUnitPrice,
+  parsePaymentAppointmentSnapshot,
+  parseQuotedPayment,
+  paymentQuoteFromSnapshot,
+  quotedPaymentMatchesSnapshot,
+} from '@/lib/payments/checkout-snapshot'
 import type { PublicBarbershopCheckoutConfig, PublicServiceCheckoutConfig } from '@/lib/types'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -23,6 +30,7 @@ interface CheckoutRequest {
   start_time?: unknown
   client_name?: unknown
   client_phone?: unknown
+  quoted_payment?: unknown
 }
 
 function getAppUrl(req: NextRequest): string {
@@ -89,6 +97,7 @@ export async function POST(req: NextRequest) {
   const startTime = typeof body.start_time === 'string' ? body.start_time.trim() : ''
   const clientName = typeof body.client_name === 'string' ? body.client_name.trim() : ''
   const clientPhone = typeof body.client_phone === 'string' ? body.client_phone.trim() : ''
+  const quotedPayment = parseQuotedPayment(body.quoted_payment)
 
   if (
     !UUID_PATTERN.test(barbershopId) ||
@@ -99,7 +108,7 @@ export async function POST(req: NextRequest) {
     !clientName ||
     !clientPhone ||
     clientName.length > 120 ||
-    clientPhone.length > 40
+    clientPhone.length > 40 || !quotedPayment || !quotedPayment.depositRequired
   ) {
     return NextResponse.json({ error: 'Datos de reserva inválidos' }, { status: 400 })
   }
@@ -155,19 +164,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Barbero no encontrado, inactivo o inválido' }, { status: 404 })
   }
 
-  const servicePrice = Number(service.price)
-  const depositPercentage = Number(barbershop.deposit_percentage)
-  const currency = typeof barbershop.currency === 'string' ? barbershop.currency.trim().toUpperCase() : ''
-
   if (
-    !Number.isFinite(servicePrice) ||
-    servicePrice <= 0 ||
     !Number.isInteger(service.duration) ||
-    service.duration <= 0 ||
-    !Number.isFinite(depositPercentage) ||
-    depositPercentage <= 0 ||
-    depositPercentage > 100 ||
-    !/^[A-Z]{3}$/.test(currency)
+    service.duration <= 0
   ) {
     return NextResponse.json({ error: 'La configuración de pago es inválida' }, { status: 400 })
   }
@@ -189,13 +188,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const depositAmount = Math.round(servicePrice * depositPercentage) / 100
   const preferenceStartsAt = new Date()
   const expiresAt = new Date(preferenceStartsAt.getTime() + PENDING_PAYMENT_TTL_MS).toISOString()
-
-  if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
-    return NextResponse.json({ error: 'Monto de seña inválido' }, { status: 400 })
-  }
 
   const appUrl = getAppUrl(req)
   let notificationUrlResult: ReturnType<typeof buildNotificationUrl>
@@ -232,8 +226,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Mercado Pago figura configurado pero no tiene una credencial disponible' }, { status: 503 })
   }
 
-  const { data: appointmentId, error: appointmentError } = await admin.rpc(
-    'create_appointment_atomic',
+  const { data: snapshotData, error: appointmentError } = await admin.rpc(
+    'create_payment_appointment_atomic',
     {
       p_barbershop_id: barbershopId,
       p_barber_id: barberId,
@@ -242,11 +236,9 @@ export async function POST(req: NextRequest) {
       p_start_time: normalizedStartTime,
       p_client_name: clientName,
       p_client_phone: clientPhone,
-      p_payment_pending: true,
-      p_deposit_amount: depositAmount,
       p_expires_at: expiresAt,
     }
-  )
+  ).single()
 
   if (appointmentError?.message.includes('SLOT_')) {
     return NextResponse.json(
@@ -273,9 +265,23 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  if (appointmentError || !appointmentId) {
+  if (
+    appointmentError?.message.includes('INVALID_PAYMENT_CONFIGURATION')
+    || appointmentError?.message.includes('INVALID_PAYMENT_BOOKING')
+  ) {
+    return NextResponse.json(
+      { error: 'La configuración de pago es inválida' },
+      { status: 400 }
+    )
+  }
+
+  const paymentSnapshot = parsePaymentAppointmentSnapshot(snapshotData)
+
+  if (appointmentError || !paymentSnapshot) {
     return NextResponse.json({ error: 'Error al crear turno' }, { status: 500 })
   }
+
+  const appointmentId = paymentSnapshot.appointmentId
 
   async function deletePendingAppointment(): Promise<boolean> {
     const { data, error } = await admin
@@ -289,13 +295,44 @@ export async function POST(req: NextRequest) {
     return !error && Boolean(data)
   }
 
+  const finalPayment = paymentQuoteFromSnapshot(paymentSnapshot)
+  if (!quotedPaymentMatchesSnapshot(quotedPayment, paymentSnapshot)) {
+    const cleanedUp = await deletePendingAppointment()
+    if (!cleanedUp) {
+      return NextResponse.json(
+        { error: 'El importe cambió y no se pudo revertir el turno pendiente' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(
+      {
+        error: 'El importe cambió. Revisá el nuevo resumen antes de continuar.',
+        code: 'PAYMENT_QUOTE_CHANGED',
+        payment: finalPayment,
+      },
+      { status: 409 }
+    )
+  }
+
+  let preferenceUnitPrice: number
+  try {
+    preferenceUnitPrice = mercadoPagoUnitPrice(paymentSnapshot)
+  } catch {
+    const cleanedUp = await deletePendingAppointment()
+    return NextResponse.json(
+      { error: cleanedUp ? 'El snapshot de pago es inválido' : 'El snapshot es inválido y no se pudo revertir el turno pendiente' },
+      { status: 500 }
+    )
+  }
+
   const preferenceBody: Record<string, unknown> = {
     items: [
       {
         title: `Seña - ${service.name} en ${barbershop.name}`,
         quantity: 1,
-        currency_id: currency,
-        unit_price: depositAmount,
+        currency_id: paymentSnapshot.currency,
+        unit_price: preferenceUnitPrice,
       },
     ],
     back_urls: {
@@ -368,5 +405,5 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  return NextResponse.json({ init_point: initPoint })
+  return NextResponse.json({ init_point: initPoint, payment: finalPayment })
 }

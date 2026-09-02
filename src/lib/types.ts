@@ -19,6 +19,9 @@ export interface Barbershop {
   advance_booking_days: number
   cancellation_hours: number
   mp_configured: boolean
+  processing_fee_mode: ProcessingFeeMode
+  mp_settlement_option: MercadoPagoSettlementOption
+  effective_processing_rate: number
   active: boolean
   created_at: string
   updated_at: string
@@ -132,6 +135,8 @@ export interface ClientBarbershop {
 
 export type AppointmentStatus = 'pending' | 'pending_payment' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
 export type DepositStatus = 'none' | 'pending' | 'paid' | 'refunded'
+export type ProcessingFeeMode = 'barbershop_absorbs' | 'customer_covers'
+export type MercadoPagoSettlementOption = 'instant' | '10_days' | '18_days' | '35_days' | 'custom'
 
 export interface Appointment {
   id: string
@@ -144,6 +149,12 @@ export interface Appointment {
   end_time: string
   status: AppointmentStatus
   deposit_amount: number
+  processing_fee_amount: number
+  processing_fee_rate: number
+  processing_fee_mode: ProcessingFeeMode
+  payment_total_amount: number
+  payment_currency: string
+  processing_fee_settlement_option: MercadoPagoSettlementOption
   deposit_status: DepositStatus
   client_name: string | null
   client_phone: string | null

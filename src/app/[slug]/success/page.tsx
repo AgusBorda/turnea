@@ -3,6 +3,10 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { formatLocalDate } from '@/lib/datetime'
+import {
+  buildSuccessPaymentSummary,
+  formatPaymentCurrency,
+} from '@/lib/payments/success-payment-summary'
 import { createClient } from '@/lib/supabase/server'
 import type { PublicBarbershop } from '@/lib/types'
 import PaymentStatusPolling from './payment-status-polling'
@@ -28,6 +32,10 @@ interface AppointmentView {
   status: string
   deposit_status: string | null
   deposit_amount: number | null
+  processing_fee_amount: number | null
+  payment_total_amount: number | null
+  processing_fee_mode: 'barbershop_absorbs' | 'customer_covers' | null
+  payment_currency: string | null
   barber_name: string
   service_name: string | null
   service_price: number | null
@@ -99,9 +107,14 @@ function SuccessCard({
   barbershop: BarbershopView
   appointment: AppointmentView
 }) {
-  const depositAmount = Number(appointment.deposit_amount) || 0
-  const servicePrice = Number(appointment.service_price) || 0
-  const remaining = Math.max(servicePrice - depositAmount, 0)
+  const payment = buildSuccessPaymentSummary({
+    servicePrice: appointment.service_price,
+    depositAmount: appointment.deposit_amount,
+    processingFeeAmount: appointment.processing_fee_amount,
+    paymentTotalAmount: appointment.payment_total_amount,
+    processingFeeMode: appointment.processing_fee_mode,
+    paymentCurrency: appointment.payment_currency,
+  })
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -124,17 +137,38 @@ function SuccessCard({
 
           <AppointmentDetails barbershop={barbershop} appointment={appointment} />
 
-          <div className="border-t border-gray-200 pt-3 space-y-1">
+          <div className="border-t border-gray-200 pt-3 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Seña pagada</span>
               <span className="font-bold text-green-600">
-                ${depositAmount.toLocaleString('es-AR')} ✓
+                {formatPaymentCurrency(payment.depositAmount, payment.currency)} ✓
               </span>
             </div>
-            {remaining > 0 && (
+            {payment.showProcessingBreakdown && (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Costo de procesamiento</span>
+                  <span className="font-medium">
+                    {formatPaymentCurrency(payment.processingFeeAmount, payment.currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-gray-100 pt-2 text-sm">
+                  <span className="font-medium">Total pagado</span>
+                  <span className="font-bold text-green-600">
+                    {formatPaymentCurrency(payment.paymentTotalAmount, payment.currency)}
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-gray-500">
+                  El costo de procesamiento corresponde al pago online y no modifica el valor del servicio.
+                </p>
+              </>
+            )}
+            {payment.remainingServiceAmount > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Resto a pagar el día</span>
-                <span className="font-medium">${remaining.toLocaleString('es-AR')}</span>
+                <span className="font-medium">
+                  {formatPaymentCurrency(payment.remainingServiceAmount, payment.currency)}
+                </span>
               </div>
             )}
           </div>
