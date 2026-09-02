@@ -315,24 +315,6 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Until the payment webhook validates payment_total_amount, do not expose a
-  // route-level bypass around Booking's temporary customer_covers guard.
-  if (
-    paymentSnapshot.processingFeeMode === 'customer_covers'
-    && paymentSnapshot.processingFeeAmount > 0
-  ) {
-    const cleanedUp = await deletePendingAppointment()
-    return NextResponse.json(
-      {
-        error: cleanedUp
-          ? 'El pago con costo de procesamiento todavía no está habilitado'
-          : 'El pago no está habilitado y no se pudo revertir el turno pendiente',
-        code: 'CUSTOMER_COVERS_PAYMENT_PENDING_WEBHOOK',
-      },
-      { status: cleanedUp ? 503 : 500 }
-    )
-  }
-
   let preferenceUnitPrice: number
   try {
     preferenceUnitPrice = mercadoPagoUnitPrice(paymentSnapshot)

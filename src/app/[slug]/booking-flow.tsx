@@ -211,8 +211,6 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
 
   const requiresDeposit = paymentQuote?.depositRequired
     ?? (barbershop.deposit_required && mpConfigured)
-  const customerFeePendingCheckout = paymentQuote?.processingFeeMode === 'customer_covers'
-    && paymentQuote.processingFeeAmount > 0
   const paymentQuoteUnavailable = requiresDeposit && (
     quoteLoading || Boolean(quoteError) || paymentQuote === null
   )
@@ -239,10 +237,6 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         if (!paymentQuote) {
           throw new Error('No se pudo verificar el importe del pago. Intentá nuevamente.')
         }
-        if (customerFeePendingCheckout) {
-          throw new Error('Este pago todavía no está habilitado. Elegí otro servicio o intentá más tarde.')
-        }
-
         // Flow with Mercado Pago deposit
         const res = await fetch('/api/checkout', {
           method: 'POST',
@@ -623,7 +617,6 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
                 disabled={
                   loading
                   || paymentQuoteUnavailable
-                  || customerFeePendingCheckout
                   || !clientName.trim()
                   || !clientPhone.trim()
                 }
@@ -636,11 +629,6 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
                     ? `Pagar ${formatPaymentAmount(paymentQuote.paymentTotalAmount, paymentQuote.currency)} con Mercado Pago`
                     : 'Calculando pago...'}
               </button>
-              {customerFeePendingCheckout && (
-                <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
-                  Pago online temporalmente deshabilitado mientras completamos la integración del costo de procesamiento.
-                </p>
-              )}
               <p className="text-xs text-center text-[var(--muted)]">
                 La dirección del local se muestra tras confirmar el pago.
               </p>

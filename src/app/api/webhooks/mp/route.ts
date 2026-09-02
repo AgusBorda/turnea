@@ -1,12 +1,14 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
-
 import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  moneyAmountAsNumber,
+  paymentAmountAndCurrencyMatch,
+  validateMercadoPagoWebhookSignature,
+} from '@/lib/payments/mp-webhook-validation'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const PAYMENT_ID_PATTERN = /^\d+$/
-const AMOUNT_TOLERANCE = 0.005
 
 interface WebhookBody {
   type?: unknown
@@ -55,40 +57,6 @@ function isMerchantOrder(value: unknown): value is MercadoPagoMerchantOrder {
   return typeof value === 'object' && value !== null
 }
 
-function validateWebhookSignature(req: NextRequest, secret: string): boolean {
-  const xSignature = req.headers.get('x-signature')
-  let timestamp = ''
-  let receivedHash = ''
-
-  for (const part of xSignature?.split(',') || []) {
-    const separatorIndex = part.indexOf('=')
-    if (separatorIndex === -1) continue
-
-    const key = part.slice(0, separatorIndex).trim()
-    const value = part.slice(separatorIndex + 1).trim()
-
-    if (key === 'ts') timestamp = value
-    if (key === 'v1') receivedHash = value.toLowerCase()
-  }
-
-  const dataId = req.nextUrl.searchParams.get('data.id')?.toLowerCase() || ''
-  const requestId = req.headers.get('x-request-id') || ''
-  const manifest = [
-    dataId ? `id:${dataId};` : '',
-    requestId ? `request-id:${requestId};` : '',
-    timestamp ? `ts:${timestamp};` : '',
-  ].join('')
-
-  if (!/^[0-9a-f]{64}$/.test(receivedHash)) {
-    return false
-  }
-
-  const expectedHash = createHmac('sha256', secret).update(manifest).digest()
-  const receivedHashBuffer = Buffer.from(receivedHash, 'hex')
-
-  return receivedHashBuffer.length === expectedHash.length && timingSafeEqual(receivedHashBuffer, expectedHash)
-}
-
 export async function POST(req: NextRequest) {
   let body: WebhookBody
 
@@ -124,7 +92,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Webhook no configurado' }, { status: 500 })
   }
 
-  if (!validateWebhookSignature(req, webhookSecret)) {
+  if (!validateMercadoPagoWebhookSignature({
+    xSignature: req.headers.get('x-signature'),
+    requestId: req.headers.get('x-request-id'),
+    dataId: req.nextUrl.searchParams.get('data.id'),
+    secret: webhookSecret,
+  })) {
     return NextResponse.json({ error: 'Firma inválida' }, { status: 401 })
   }
 
@@ -209,7 +182,7 @@ export async function POST(req: NextRequest) {
 
   const { data: appointment, error: appointmentError } = await admin
     .from('appointments')
-    .select('id, barbershop_id, status, deposit_status, deposit_amount, expires_at, mp_preference_id, mp_payment_id')
+    .select('id, barbershop_id, status, deposit_status, deposit_amount, processing_fee_amount, payment_total_amount, payment_currency, expires_at, mp_preference_id, mp_payment_id')
     .eq('id', externalReference)
     .maybeSingle()
 
@@ -237,34 +210,20 @@ export async function POST(req: NextRequest) {
     return okResponse()
   }
 
-  const { data: barbershop, error: barbershopError } = await admin
-    .from('barbershops')
-    .select('id, currency')
-    .eq('id', barbershopId)
-    .maybeSingle()
-
-  if (barbershopError) {
-    return NextResponse.json({ error: 'No se pudo validar la barbería' }, { status: 500 })
-  }
-
-  if (!barbershop) {
+  if (!paymentAmountAndCurrencyMatch({
+    expectedAmount: appointment.payment_total_amount,
+    expectedCurrency: appointment.payment_currency,
+    paidAmount: payment.transaction_amount,
+    paidCurrency: payment.currency_id,
+  })) {
     return okResponse()
   }
 
-  const expectedAmount = Number(appointment.deposit_amount)
-  const paidAmount = Number(payment.transaction_amount)
-  const expectedCurrency = typeof barbershop.currency === 'string' ? barbershop.currency.trim().toUpperCase() : ''
-  const paidCurrency = typeof payment.currency_id === 'string' ? payment.currency_id.trim().toUpperCase() : ''
-
-  if (
-    !Number.isFinite(expectedAmount) ||
-    !Number.isFinite(paidAmount) ||
-    Math.abs(expectedAmount - paidAmount) > AMOUNT_TOLERANCE ||
-    !expectedCurrency ||
-    paidCurrency !== expectedCurrency
-  ) {
-    return okResponse()
-  }
+  const paidAmount = moneyAmountAsNumber(payment.transaction_amount)
+  const expectedCurrency = typeof appointment.payment_currency === 'string'
+    ? appointment.payment_currency.trim().toUpperCase()
+    : ''
+  if (paidAmount === null) return okResponse()
 
   const merchantOrderId = asPaymentId(payment.order?.id)
   if (!merchantOrderId || !appointment.mp_preference_id) {
@@ -308,7 +267,7 @@ export async function POST(req: NextRequest) {
         p_appointment_id: reconciliationAppointmentId,
         p_mp_payment_id: verifiedPaymentId,
         p_mp_preference_id: reconciliationPreferenceId,
-        p_amount: expectedAmount,
+        p_amount: paidAmount,
         p_currency: expectedCurrency,
         p_mp_payment_status: 'approved',
         p_reason: reason,
