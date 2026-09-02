@@ -5,6 +5,10 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { ExternalLink } from 'lucide-react'
 import type { MercadoPagoSettlementOption, ProcessingFeeMode } from '@/lib/types'
+import {
+  calculateProcessingFee,
+  effectiveRateFromPercentage,
+} from '@/lib/payments/processing-fee'
 
 const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
 const TIMEZONE_OPTIONS = [
@@ -77,6 +81,28 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
+  const selectedProcessingRatePreset = processingRatePresets.find(
+    preset => preset.settlement_option === mpSettlementOption
+  )
+  let processingFeePreview: ReturnType<typeof calculateProcessingFee> | null = null
+
+  try {
+    processingFeePreview = calculateProcessingFee({
+      depositAmount: '1500.00',
+      processingFeeMode,
+      effectiveRate: effectiveRateFromPercentage(effectiveProcessingRatePercent),
+      currency: 'ARS',
+    })
+  } catch {
+    processingFeePreview = null
+  }
+
+  const formatPreviewAmount = (amount: string) => new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(amount))
 
   function generateSlug(text: string): string {
     return text
@@ -111,8 +137,10 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     e.preventDefault()
     if (!name.trim() || !slug.trim()) return
 
-    const effectiveRatePercent = Number(effectiveProcessingRatePercent)
-    if (!Number.isFinite(effectiveRatePercent) || effectiveRatePercent < 0 || effectiveRatePercent > 15) {
+    let effectiveProcessingRate: string
+    try {
+      effectiveProcessingRate = effectiveRateFromPercentage(effectiveProcessingRatePercent)
+    } catch {
       setError('El costo efectivo debe estar entre 0% y 15%.')
       return
     }
@@ -136,7 +164,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
       advance_booking_days: advanceBookingDays,
       processing_fee_mode: processingFeeMode,
       mp_settlement_option: mpSettlementOption,
-      effective_processing_rate: effectiveRatePercent / 100,
+      effective_processing_rate: effectiveProcessingRate,
     }
     const accessToken = newMpAccessToken.trim()
 
@@ -368,30 +396,46 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           </p>
         </div>
 
-        <div className="space-y-3 border-t border-[var(--border)] pt-4">
+        <div className="space-y-4 border-t border-[var(--border)] pt-4">
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="mp-settlement-option">
-              Plazo de acreditación
-            </label>
-            <select
-              id="mp-settlement-option"
-              value={mpSettlementOption}
-              onChange={event => {
-                const option = event.target.value as MercadoPagoSettlementOption
-                setMpSettlementOption(option)
-                const preset = processingRatePresets.find(item => item.settlement_option === option)
-                if (preset?.suggested_effective_rate != null) {
-                  setEffectiveProcessingRatePercent(String(Number(preset.suggested_effective_rate) * 100))
-                }
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] bg-white"
-            >
-              {processingRatePresets.map(preset => (
-                <option key={preset.settlement_option} value={preset.settlement_option}>
-                  {preset.label}
-                </option>
-              ))}
-            </select>
+            <p className="text-sm font-medium mb-2">¿Cuándo querés recibir tus señas?</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {processingRatePresets.map(preset => {
+                const selected = preset.settlement_option === mpSettlementOption
+                return (
+                  <button
+                    key={preset.settlement_option}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => {
+                      setMpSettlementOption(preset.settlement_option)
+                      if (preset.suggested_effective_rate != null) {
+                        setEffectiveProcessingRatePercent(
+                          String(Number(preset.suggested_effective_rate) * 100)
+                        )
+                      }
+                    }}
+                    className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                      selected
+                        ? 'border-[var(--primary)] bg-[var(--primary)]/5'
+                        : 'border-[var(--border)] hover:border-[var(--primary)]/50'
+                    }`}
+                  >
+                    <span className="block text-sm font-medium">{preset.label}</span>
+                    <span className="block text-xs text-[var(--muted)] mt-0.5">
+                      {preset.suggested_effective_rate == null
+                        ? 'Porcentaje definido manualmente'
+                        : `Referencia: ${Number(preset.suggested_effective_rate) * 100}%`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {selectedProcessingRatePreset?.suggested_effective_rate == null && (
+              <p className="mt-2 text-xs text-amber-700">
+                Este plazo no tiene un porcentaje sugerido. Verificá e ingresá el costo efectivo de tu cuenta.
+              </p>
+            )}
           </div>
 
           <div>
@@ -410,12 +454,12 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
               className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
             />
             <p className="text-xs text-[var(--muted)] mt-1">
-              Es una estimación editable. Los presets no reemplazan las condiciones reales de tu cuenta.
+              Es una estimación editable. El importe neto acreditado puede variar según las condiciones de tu cuenta de Mercado Pago.
             </p>
           </div>
 
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Quién absorbe el costo</legend>
+            <legend className="text-sm font-medium">¿Quién absorbe el costo de procesamiento?</legend>
             <label className="flex items-start gap-3 rounded-lg border border-[var(--border)] p-3">
               <input
                 type="radio"
@@ -442,11 +486,38 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
               <span>
                 <span className="block text-sm font-medium">El cliente</span>
                 <span className="block text-xs text-[var(--muted)]">
-                  Se agregará un Costo de procesamiento en una etapa posterior de P4.
+                  Se agrega un costo de procesamiento para compensar aproximadamente los cargos de Mercado Pago.
                 </span>
               </span>
             </label>
           </fieldset>
+
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--secondary)]/45 p-4">
+            <p className="text-sm font-semibold">Vista previa sobre una seña de $1.500,00</p>
+            {processingFeePreview ? (
+              <div className="mt-3 space-y-1.5 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--muted)]">Seña</span>
+                  <span>{formatPreviewAmount(processingFeePreview.depositAmount)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--muted)]">Costo de procesamiento</span>
+                  <span>{formatPreviewAmount(processingFeePreview.processingFeeAmount)}</span>
+                </div>
+                <div className="flex justify-between gap-4 border-t border-[var(--border)] pt-2 font-semibold">
+                  <span>Total que pagaría el cliente</span>
+                  <span>{formatPreviewAmount(processingFeePreview.paymentTotalAmount)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-red-600">
+                Ingresá un porcentaje válido para calcular la vista previa.
+              </p>
+            )}
+            <p className="mt-3 text-xs text-[var(--muted)]">
+              Esta estimación no reemplaza las condiciones informadas por Mercado Pago.
+            </p>
+          </div>
         </div>
 
         {mpConfigured && (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Barbershop, PublicBarber, PublicService, TimeSlot } from '@/lib/types'
 import { formatPrice, formatDuration } from '@/lib/utils'
 import {
@@ -13,6 +13,7 @@ import {
 import { useMinuteNow } from '@/hooks/use-minute-now'
 import { createClient } from '@/lib/supabase/client'
 import { Check, ChevronLeft, Clock, User, Scissors, Calendar, CreditCard, Wallet } from 'lucide-react'
+import type { PaymentQuote } from '@/lib/payments/payment-quote'
 
 type BookingBarbershop = Pick<
   Barbershop,
@@ -40,6 +41,10 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
   const [clientPhone, setClientPhone] = useState('')
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
+  const [paymentQuote, setPaymentQuote] = useState<PaymentQuote | null>(null)
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [quoteError, setQuoteError] = useState('')
+  const quoteRequestId = useRef(0)
 
   const synchronizeSelection = useCallback((currentNow: Date) => {
     if (!selectedDate) return
@@ -89,8 +94,43 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     }
   }
 
+  async function loadPaymentQuote(serviceId: string) {
+    const requestId = ++quoteRequestId.current
+    setQuoteLoading(true)
+    setQuoteError('')
+    setPaymentQuote(null)
+
+    try {
+      const response = await fetch('/api/checkout/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barbershop_id: barbershop.id,
+          service_id: serviceId,
+        }),
+      })
+      const result: PaymentQuote | { error?: string } = await response.json()
+
+      if (!response.ok || !('depositRequired' in result)) {
+        throw new Error('No se pudo calcular el resumen de pago.')
+      }
+      if (requestId === quoteRequestId.current) {
+        setPaymentQuote(result)
+      }
+    } catch {
+      if (requestId === quoteRequestId.current) {
+        setQuoteError('No pudimos calcular el pago. Intentá nuevamente.')
+      }
+    } finally {
+      if (requestId === quoteRequestId.current) {
+        setQuoteLoading(false)
+      }
+    }
+  }
+
   function selectService(service: PublicService) {
     setSelectedService(service)
+    void loadPaymentQuote(service.id)
     if (barbers.length === 1) {
       setSelectedBarber(barbers[0])
       setStep('date')
@@ -169,10 +209,19 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     setStep('confirm')
   }
 
-  const requiresDeposit = barbershop.deposit_required && mpConfigured
-  const depositAmount = requiresDeposit
-    ? Math.round((selectedService?.price || 0) * barbershop.deposit_percentage / 100)
-    : 0
+  const requiresDeposit = paymentQuote?.depositRequired
+    ?? (barbershop.deposit_required && mpConfigured)
+  const customerFeePendingCheckout = paymentQuote?.processingFeeMode === 'customer_covers'
+    && paymentQuote.processingFeeAmount > 0
+  const paymentQuoteUnavailable = requiresDeposit && (
+    quoteLoading || Boolean(quoteError) || paymentQuote === null
+  )
+  const formatPaymentAmount = (amount: number, currency: string) => new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
 
   async function confirmBooking() {
     if (!clientName.trim() || !clientPhone.trim()) {
@@ -187,6 +236,13 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
       const dateStr = selectedDate!
 
       if (requiresDeposit) {
+        if (!paymentQuote) {
+          throw new Error('No se pudo verificar el importe del pago. Intentá nuevamente.')
+        }
+        if (customerFeePendingCheckout) {
+          throw new Error('Este pago todavía no está habilitado. Elegí otro servicio o intentá más tarde.')
+        }
+
         // Flow with Mercado Pago deposit
         const res = await fetch('/api/checkout', {
           method: 'POST',
@@ -475,18 +531,54 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
                 {selectedService && formatPrice(selectedService.price)}
               </span>
             </div>
-            {requiresDeposit && (
-              <div className="flex justify-between bg-[var(--primary)]/5 -mx-4 px-4 py-2 rounded-b-xl">
-                <span className="text-[var(--primary)] font-medium flex items-center gap-1">
-                  <CreditCard className="w-3.5 h-3.5" />
-                  Seña requerida ({barbershop.deposit_percentage}%)
-                </span>
-                <span className="font-bold text-[var(--primary)]">
-                  {formatPrice(depositAmount)}
-                </span>
-              </div>
-            )}
           </div>
+
+          {(requiresDeposit || quoteLoading || quoteError) && (
+            <div className="mb-4 rounded-xl border border-[var(--border)] bg-white p-4">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-[var(--primary)]" />
+                <h3 className="text-sm font-semibold">Resumen de pago</h3>
+              </div>
+              {quoteLoading ? (
+                <p className="mt-3 text-sm text-[var(--muted)]">Calculando importe seguro...</p>
+              ) : quoteError ? (
+                <div className="mt-3 text-sm">
+                  <p className="text-red-600">{quoteError}</p>
+                  <button
+                    type="button"
+                    onClick={() => selectedService && void loadPaymentQuote(selectedService.id)}
+                    className="mt-2 font-medium text-[var(--primary)] hover:underline"
+                  >
+                    Reintentar cálculo
+                  </button>
+                </div>
+              ) : paymentQuote?.depositRequired ? (
+                <div className="mt-3 space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-[var(--muted)]">Seña</span>
+                    <span>{formatPaymentAmount(paymentQuote.depositAmount, paymentQuote.currency)}</span>
+                  </div>
+                  {paymentQuote.processingFeeMode === 'customer_covers' && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-[var(--muted)]">Costo de procesamiento</span>
+                      <span>{formatPaymentAmount(paymentQuote.processingFeeAmount, paymentQuote.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-4 border-t border-[var(--border)] pt-2 font-semibold">
+                    <span>Total a pagar ahora</span>
+                    <span className="text-[var(--primary)]">
+                      {formatPaymentAmount(paymentQuote.paymentTotalAmount, paymentQuote.currency)}
+                    </span>
+                  </div>
+                  {paymentQuote.processingFeeMode === 'customer_covers' && (
+                    <p className="pt-1 text-xs text-[var(--muted)]">
+                      El costo de procesamiento busca compensar aproximadamente los cargos asociados al pago online.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
 
           {/* Datos del cliente */}
           <div className="space-y-3 mb-4">
@@ -510,12 +602,27 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             <div className="space-y-3">
               <button
                 onClick={confirmBooking}
-                disabled={loading || !clientName.trim() || !clientPhone.trim()}
+                disabled={
+                  loading
+                  || paymentQuoteUnavailable
+                  || customerFeePendingCheckout
+                  || !clientName.trim()
+                  || !clientPhone.trim()
+                }
                 className="w-full py-3.5 bg-[var(--primary)] text-white font-semibold rounded-xl hover:bg-[var(--primary-dark)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <CreditCard className="w-4 h-4" />
-                {loading ? 'Procesando...' : `Señar con Mercado Pago — ${formatPrice(depositAmount)}`}
+                {loading
+                  ? 'Procesando...'
+                  : paymentQuote
+                    ? `Pagar ${formatPaymentAmount(paymentQuote.paymentTotalAmount, paymentQuote.currency)} con Mercado Pago`
+                    : 'Calculando pago...'}
               </button>
+              {customerFeePendingCheckout && (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
+                  Pago online temporalmente deshabilitado mientras completamos la integración del costo de procesamiento.
+                </p>
+              )}
               <p className="text-xs text-center text-[var(--muted)]">
                 La dirección del local se muestra tras confirmar el pago.
               </p>

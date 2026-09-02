@@ -2,6 +2,8 @@ export type ProcessingFeeMode = 'barbershop_absorbs' | 'customer_covers'
 export type MercadoPagoSettlementOption = 'instant' | '10_days' | '18_days' | '35_days' | 'custom'
 
 const ZERO = BigInt(0)
+const ONE = BigInt(1)
+const FIFTY = BigInt(50)
 const HUNDRED = BigInt(100)
 const RATE_SCALE = BigInt(1_000_000)
 const MAX_EFFECTIVE_RATE_UNITS = BigInt(150_000)
@@ -52,7 +54,30 @@ function formatRate(rateUnits: bigint): string {
 }
 
 function ceilDivide(dividend: bigint, divisor: bigint): bigint {
-  return (dividend + divisor - BigInt(1)) / divisor
+  return (dividend + divisor - ONE) / divisor
+}
+
+export function effectiveRateFromPercentage(percentage: string): string {
+  const percentageUnits = parseUnsignedDecimal(percentage, 4, 'EFFECTIVE_RATE_PERCENTAGE')
+  if (percentageUnits > MAX_EFFECTIVE_RATE_UNITS) {
+    throw new Error('INVALID_EFFECTIVE_RATE')
+  }
+
+  return formatRate(percentageUnits)
+}
+
+export function calculateDepositAmount(servicePrice: string, depositPercentage: number): string {
+  if (!Number.isInteger(depositPercentage) || depositPercentage <= 0 || depositPercentage > 100) {
+    throw new Error('INVALID_DEPOSIT_PERCENTAGE')
+  }
+
+  const servicePriceCents = parseUnsignedDecimal(servicePrice, 2, 'SERVICE_PRICE')
+  if (servicePriceCents > MAX_MONEY_CENTS) {
+    throw new Error('INVALID_SERVICE_PRICE')
+  }
+
+  const depositCents = (servicePriceCents * BigInt(depositPercentage) + FIFTY) / HUNDRED
+  return formatCents(depositCents)
 }
 
 /**
