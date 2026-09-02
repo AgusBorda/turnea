@@ -787,9 +787,23 @@ master
 
 ---
 
+### 🚧 Production Readiness P2C — Harden public default privileges
+
+**Objetivo:** evitar que objetos futuros creados en `public` hereden privilegios implícitos para roles cliente y restaurar una matriz explícita de ejecución para las RPC actuales.
+
+* [x] Auditar el origen de los default privileges amplios.
+* [x] Clasificar RPC públicas, owner, server e internas/cron.
+* [x] Crear una migration nueva sin modificar migrations históricas.
+* [ ] Aplicar y validar la migration en Supabase DEV.
+* [ ] Repetir el fresh-install completo con defaults endurecidos.
+
+**Estado:** 🚧 Implementado localmente. Compatibilidad con Supabase hosted corregida; pendiente reintento y validación en DEV, seguido por fresh-install. PROD intacto.
+
+---
+
 ## 📌 Ticket actual
 
-**Próximo:** Production Readiness P2 — PROD Baseline.
+**Actual:** Production Readiness P2C — Harden public default privileges. Pendiente aplicación y validación en Supabase DEV.
 
 ---
 
