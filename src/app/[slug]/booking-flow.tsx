@@ -1,17 +1,28 @@
 'use client'
 
-import { useState } from 'react'
-import { Barbershop, Barber, Service, TimeSlot } from '@/lib/types'
+import { useCallback, useState } from 'react'
+import { Barbershop, PublicBarber, PublicService, TimeSlot } from '@/lib/types'
 import { formatPrice, formatDuration } from '@/lib/utils'
+import {
+  addCalendarDays,
+  formatLocalDate,
+  getBarbershopToday,
+  isLocalSlotInPast,
+  LocalDate,
+} from '@/lib/datetime'
+import { useMinuteNow } from '@/hooks/use-minute-now'
 import { createClient } from '@/lib/supabase/client'
-import { format, addDays } from 'date-fns'
-import { es } from 'date-fns/locale'
 import { Check, ChevronLeft, Clock, User, Scissors, Calendar, CreditCard, Wallet } from 'lucide-react'
 
+type BookingBarbershop = Pick<
+  Barbershop,
+  'id' | 'slot_duration' | 'deposit_required' | 'deposit_percentage' | 'advance_booking_days' | 'timezone'
+>
+
 interface Props {
-  barbershop: Barbershop
-  barbers: Barber[]
-  services: Service[]
+  barbershop: BookingBarbershop
+  barbers: PublicBarber[]
+  services: PublicService[]
   mpConfigured: boolean
 }
 
@@ -19,9 +30,9 @@ type Step = 'service' | 'barber' | 'date' | 'time' | 'confirm'
 
 export default function BookingFlow({ barbershop, barbers, services, mpConfigured }: Props) {
   const [step, setStep] = useState<Step>('service')
-  const [selectedService, setSelectedService] = useState<Service | null>(null)
-  const [selectedBarber, setSelectedBarber] = useState<Barber | null>(null)
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [selectedService, setSelectedService] = useState<PublicService | null>(null)
+  const [selectedBarber, setSelectedBarber] = useState<PublicBarber | null>(null)
+  const [selectedDate, setSelectedDate] = useState<LocalDate | null>(null)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
   const [loading, setLoading] = useState(false)
@@ -30,8 +41,47 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
+  const synchronizeSelection = useCallback((currentNow: Date) => {
+    if (!selectedDate) return
+
+    const currentToday = getBarbershopToday(barbershop.timezone, currentNow)
+    if (selectedDate < currentToday) {
+      setSelectedDate(currentToday)
+      setSelectedTime(null)
+      setTimeSlots([])
+      setStep('date')
+      setError('El día seleccionado ya pasó. Elegí una nueva fecha.')
+      return
+    }
+
+    if (
+      selectedTime
+      && isLocalSlotInPast(
+        selectedDate,
+        `${selectedTime}:00`,
+        barbershop.timezone,
+        currentNow
+      )
+    ) {
+      setSelectedTime(null)
+      setStep('time')
+      setError('El horario seleccionado ya pasó. Elegí otro disponible.')
+    }
+  }, [barbershop.timezone, selectedDate, selectedTime])
+
+  const now = useMinuteNow(synchronizeSelection)
+
   const steps: Step[] = ['service', 'barber', 'date', 'time', 'confirm']
   const currentIndex = steps.indexOf(step)
+  const today = now ? getBarbershopToday(barbershop.timezone, now) : null
+  const visibleTimeSlots = selectedDate && now
+    ? timeSlots.filter(slot => !isLocalSlotInPast(
+        selectedDate,
+        `${slot.time}:00`,
+        barbershop.timezone,
+        now
+      ))
+    : timeSlots
 
   function goBack() {
     if (currentIndex > 0) {
@@ -39,7 +89,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     }
   }
 
-  function selectService(service: Service) {
+  function selectService(service: PublicService) {
     setSelectedService(service)
     if (barbers.length === 1) {
       setSelectedBarber(barbers[0])
@@ -49,48 +99,58 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     }
   }
 
-  function selectBarber(barber: Barber) {
+  function selectBarber(barber: PublicBarber) {
     setSelectedBarber(barber)
     setStep('date')
   }
 
-  async function selectDate(date: Date) {
+  async function selectDate(date: LocalDate) {
     setSelectedDate(date)
     setLoading(true)
     setError('')
 
     try {
       const supabase = createClient()
-      const dateStr = format(date, 'yyyy-MM-dd')
-
       // Fetch schedules for barber
       const { data: schedules } = await supabase
         .from('barber_schedules')
-        .select('*')
+        .select('day_of_week, start_time, end_time, is_working')
         .eq('barber_id', selectedBarber!.id)
 
       // Fetch existing appointments for that date
-      const { data: appointments } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('barber_id', selectedBarber!.id)
-        .eq('date', dateStr)
-        .neq('status', 'cancelled')
+      const { data: busySlots, error: busySlotsError } = await supabase.rpc(
+        'get_public_busy_slots',
+        {
+          p_barbershop_id: barbershop.id,
+          p_barber_id: selectedBarber!.id,
+          p_date_from: date,
+          p_date_to: date,
+        }
+      )
+
+      if (busySlotsError) throw busySlotsError
 
       // Fetch blocked slots
-      const { data: blockedSlots } = await supabase
-        .from('blocked_slots')
-        .select('*')
-        .eq('barber_id', selectedBarber!.id)
-        .eq('date', dateStr)
+      const { data: blockedSlots, error: blockedSlotsError } = await supabase.rpc(
+        'get_public_blocked_slots',
+        {
+          p_barbershop_id: barbershop.id,
+          p_barber_id: selectedBarber!.id,
+          p_date_from: date,
+          p_date_to: date,
+        }
+      )
+
+      if (blockedSlotsError) throw blockedSlotsError
 
       // Generate available slots
       const { generateTimeSlots } = await import('@/lib/utils')
       const slots = generateTimeSlots(
         date,
         schedules || [],
-        appointments || [],
+        busySlots || [],
         blockedSlots || [],
+        barbershop.timezone,
         barbershop.slot_duration,
         selectedService!.duration
       )
@@ -124,7 +184,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     setError('')
 
     try {
-      const dateStr = format(selectedDate!, 'yyyy-MM-dd')
+      const dateStr = selectedDate!
 
       if (requiresDeposit) {
         // Flow with Mercado Pago deposit
@@ -154,33 +214,30 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
 
       // Flow without deposit — direct booking
       const supabase = createClient()
-      const [hours, minutes] = selectedTime!.split(':').map(Number)
-      const startMinutes = hours * 60 + minutes
-      const endMinutes = startMinutes + selectedService!.duration
-      const endHours = Math.floor(endMinutes / 60)
-      const endMins = endMinutes % 60
-      const endTime = `${String(endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}:00`
+      const { error: aptError } = await supabase.rpc('create_appointment_atomic', {
+        p_barbershop_id: barbershop.id,
+        p_barber_id: selectedBarber!.id,
+        p_service_id: selectedService!.id,
+        p_date: dateStr,
+        p_start_time: `${selectedTime}:00`,
+        p_client_name: clientName.trim(),
+        p_client_phone: clientPhone.trim(),
+      })
 
-      const { error: aptError } = await supabase
-        .from('appointments')
-        .insert({
-          barbershop_id: barbershop.id,
-          barber_id: selectedBarber!.id,
-          service_id: selectedService!.id,
-          date: dateStr,
-          start_time: `${selectedTime}:00`,
-          end_time: endTime,
-          status: 'confirmed',
-          client_name: clientName.trim(),
-          client_phone: clientPhone.trim(),
-        })
+      if (aptError?.message.includes('SLOT_')) {
+        throw new Error('Ese horario acaba de ser reservado. ElegÃ­ otro disponible.')
+      }
+
+      if (aptError?.message.includes('DST_')) {
+        throw new Error('Ese horario no está disponible por un cambio de hora. Elegí otro horario.')
+      }
 
       if (aptError) throw aptError
 
       setSuccess(true)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Booking error:', err)
-      setError(err.message || 'Error al reservar. Intentá de nuevo.')
+      setError(err instanceof Error ? err.message : 'Error al reservar. Intentá de nuevo.')
     } finally {
       setLoading(false)
     }
@@ -198,7 +255,9 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
         </p>
         <div className="bg-[var(--secondary)] rounded-lg p-4 text-sm">
           <p className="font-medium">
-            {selectedDate && format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+            {selectedDate && formatLocalDate(selectedDate, {
+              weekday: 'long', day: 'numeric', month: 'long',
+            })}
           </p>
           <p className="text-[var(--muted)]">{selectedTime} hs</p>
         </div>
@@ -314,21 +373,21 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             Elegí un día
           </h2>
           <div className="grid grid-cols-3 gap-2">
-            {Array.from({ length: barbershop.advance_booking_days }, (_, i) => {
-              const date = addDays(new Date(), i + 1)
+            {today && Array.from({ length: barbershop.advance_booking_days }, (_, i) => {
+              const date = addCalendarDays(today, i)
               return (
                 <button
-                  key={i}
+                  key={date}
                   onClick={() => selectDate(date)}
                   disabled={loading}
                   className="bg-white p-3 rounded-xl border border-[var(--border)] hover:border-[var(--primary)] hover:shadow-sm transition-all text-center disabled:opacity-50"
                 >
                   <p className="text-xs text-[var(--muted)] capitalize">
-                    {format(date, 'EEE', { locale: es })}
+                    {formatLocalDate(date, { weekday: 'short' })}
                   </p>
-                  <p className="font-semibold text-lg">{format(date, 'd')}</p>
+                  <p className="font-semibold text-lg">{formatLocalDate(date, { day: 'numeric' })}</p>
                   <p className="text-xs text-[var(--muted)]">
-                    {format(date, 'MMM', { locale: es })}
+                    {formatLocalDate(date, { month: 'short' })}
                   </p>
                 </button>
               )
@@ -348,9 +407,11 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             Elegí un horario
           </h2>
           <p className="text-sm text-[var(--muted)] mb-4">
-            {selectedDate && format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+            {selectedDate && formatLocalDate(selectedDate, {
+              weekday: 'long', day: 'numeric', month: 'long',
+            })}
           </p>
-          {timeSlots.length === 0 ? (
+          {visibleTimeSlots.length === 0 ? (
             <div className="bg-white rounded-xl p-6 text-center border border-[var(--border)]">
               <p className="text-[var(--muted)]">No hay horarios disponibles este día.</p>
               <button
@@ -362,7 +423,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-2">
-              {timeSlots.map(slot => (
+              {visibleTimeSlots.map(slot => (
                 <button
                   key={slot.time}
                   onClick={() => slot.available && selectTime(slot.time)}
@@ -399,7 +460,9 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             <div className="flex justify-between">
               <span className="text-[var(--muted)]">Día</span>
               <span className="font-medium capitalize">
-                {selectedDate && format(selectedDate, "EEE d MMM", { locale: es })}
+                {selectedDate && formatLocalDate(selectedDate, {
+                  weekday: 'short', day: 'numeric', month: 'short',
+                })}
               </span>
             </div>
             <div className="flex justify-between">

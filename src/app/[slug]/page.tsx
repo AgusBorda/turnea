@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { Barbershop, Barber, Service } from '@/lib/types'
+import { PublicBarber, PublicBarbershop, PublicService } from '@/lib/types'
 import BookingFlow from './booking-flow'
 
 interface PageProps {
@@ -12,30 +12,33 @@ export default async function BarbershopPage({ params }: PageProps) {
   const supabase = await createClient()
 
   // Fetch barbershop
-  const { data: barbershop } = await supabase
-    .from('barbershops')
-    .select('*')
-    .eq('slug', slug)
-    .eq('active', true)
-    .single()
+  const { data: barbershopData } = await supabase
+    .rpc('get_public_barbershop_by_slug', { p_slug: slug })
+    .maybeSingle()
+  const barbershop = barbershopData as PublicBarbershop | null
 
   if (!barbershop) notFound()
 
   // Fetch barbers
-  const { data: barbers } = await supabase
-    .from('barbers')
-    .select('*')
-    .eq('barbershop_id', barbershop.id)
-    .eq('active', true)
-    .order('sort_order')
+  const { data: barbers, error: barbersError } = await supabase.rpc(
+    'get_public_barbers',
+    { p_barbershop_id: barbershop.id }
+  )
+
+  if (barbersError) {
+    throw new Error('Failed to load public barbers')
+  }
 
   // Fetch services
-  const { data: services } = await supabase
-    .from('services')
-    .select('*')
-    .eq('barbershop_id', barbershop.id)
-    .eq('active', true)
-    .order('sort_order')
+  const { data: servicesData, error: servicesError } = await supabase.rpc(
+    'get_public_services',
+    { p_barbershop_id: barbershop.id }
+  )
+
+  if (servicesError) {
+    throw new Error('Failed to load public services')
+  }
+  const services = (servicesData || []) as PublicService[]
 
   return (
     <main className="min-h-screen bg-[var(--secondary)]">
@@ -72,10 +75,10 @@ export default async function BarbershopPage({ params }: PageProps) {
       {/* Booking flow */}
       <div className="max-w-lg mx-auto px-4 py-6">
         <BookingFlow
-          barbershop={barbershop as Barbershop}
-          barbers={(barbers || []) as Barber[]}
-          services={(services || []) as Service[]}
-          mpConfigured={Boolean(barbershop.mp_access_token)}
+          barbershop={barbershop}
+          barbers={(barbers || []) as PublicBarber[]}
+          services={services}
+          mpConfigured={barbershop.mp_configured}
         />
       </div>
     </main>

@@ -18,7 +18,7 @@ export interface Barbershop {
   slot_duration: number
   advance_booking_days: number
   cancellation_hours: number
-  mp_access_token: string | null
+  mp_configured: boolean
   active: boolean
   created_at: string
   updated_at: string
@@ -36,6 +36,43 @@ export interface Barber {
   created_at: string
   updated_at: string
 }
+
+export type PublicBarbershop = Pick<
+  Barbershop,
+  | 'id'
+  | 'name'
+  | 'slug'
+  | 'description'
+  | 'address'
+  | 'phone'
+  | 'instagram'
+  | 'logo_url'
+  | 'slot_duration'
+  | 'deposit_required'
+  | 'deposit_percentage'
+  | 'advance_booking_days'
+  | 'timezone'
+  | 'mp_configured'
+>
+
+export type PublicBarbershopCheckoutConfig = Pick<
+  Barbershop,
+  | 'id'
+  | 'slug'
+  | 'name'
+  | 'currency'
+  | 'timezone'
+  | 'deposit_required'
+  | 'deposit_percentage'
+  | 'mp_configured'
+>
+
+export type PublicBarber = Pick<
+  Barber,
+  'id' | 'name' | 'bio' | 'photo_url' | 'sort_order'
+>
+
+export type DashboardBarber = Omit<Barber, 'user_id'>
 
 export interface BarberSchedule {
   id: string
@@ -60,6 +97,16 @@ export interface Service {
   updated_at: string
 }
 
+export type PublicService = Pick<
+  Service,
+  'id' | 'name' | 'description' | 'duration' | 'price' | 'sort_order'
+>
+
+export type PublicServiceCheckoutConfig = Pick<
+  Service,
+  'id' | 'name' | 'price' | 'duration'
+>
+
 export interface Client {
   id: string
   phone: string
@@ -83,7 +130,7 @@ export interface ClientBarbershop {
   created_at: string
 }
 
-export type AppointmentStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+export type AppointmentStatus = 'pending' | 'pending_payment' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
 export type DepositStatus = 'none' | 'pending' | 'paid' | 'refunded'
 
 export interface Appointment {
@@ -105,6 +152,7 @@ export interface Appointment {
   cancelled_by: string | null
   created_at: string
   updated_at: string
+  expires_at: string | null
   // Joined fields
   barber?: Barber
   service?: Service
@@ -122,7 +170,25 @@ export interface BlockedSlot {
   created_at: string
 }
 
+export type PublicBarberSchedule = Pick<
+  BarberSchedule,
+  'day_of_week' | 'start_time' | 'end_time' | 'is_working'
+>
+
+export interface PublicBlockedSlot {
+  date: string
+  start_time: string | null
+  end_time: string | null
+  all_day: boolean
+}
+
 export interface TimeSlot {
   time: string
   available: boolean
+}
+
+export interface BusySlot {
+  date: string
+  start_time: string
+  end_time: string
 }

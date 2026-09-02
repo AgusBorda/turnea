@@ -1,3 +1,11 @@
+-- ============================================================
+-- LEGACY / ARCHIVO HISTÓRICO — NO EJECUTAR
+-- Este archivo no representa el schema, permisos ni flujos actuales.
+-- La fuente de verdad es supabase/migrations/, aplicada en orden.
+-- Ejecutar este archivo podría reabrir accesos públicos o restaurar
+-- columnas y comportamientos retirados por razones de seguridad.
+-- ============================================================
+
 -- ============================================
 -- PARCHE 002: Integración Mercado Pago + mejoras
 -- Ejecutar en Supabase SQL Editor

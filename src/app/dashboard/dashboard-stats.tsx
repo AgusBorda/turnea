@@ -4,11 +4,10 @@ import { useState } from 'react'
 import {
   Calendar, DollarSign, Users, Clock,
   Check, Ban, ArrowRight, Scissors, Settings,
-  TrendingUp, X
+  TrendingUp
 } from 'lucide-react'
 import Link from 'next/link'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
+import { formatLocalDate } from '@/lib/datetime'
 
 type Period = 'today' | 'week' | 'month'
 
@@ -245,7 +244,7 @@ export default function DashboardStats({
                   <div key={apt.id} className="p-3 flex items-center gap-3">
                     <div className="min-w-[72px]">
                       <p className="text-xs font-semibold text-[var(--primary)] capitalize">
-                        {format(new Date(apt.date + 'T00:00:00'), 'EEE d/M', { locale: es })}
+                        {formatLocalDate(apt.date, { weekday: 'short', day: 'numeric', month: 'numeric' })}
                       </p>
                       <p className="text-xs text-[var(--muted)]">{apt.start_time.slice(0, 5)}</p>
                     </div>

@@ -9,21 +9,24 @@ export default async function ServicesPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('*')
+    .select('id')
     .eq('owner_id', user.id)
     .single()
 
   if (!barbershop) redirect('/dashboard')
 
-  const { data: services } = await supabase
+  const { data: services, error: servicesError } = await supabase
     .from('services')
-    .select('*')
+    .select('id, barbershop_id, name, description, duration, price, active, sort_order, created_at, updated_at')
     .eq('barbershop_id', barbershop.id)
     .order('sort_order')
 
+  if (servicesError) {
+    throw new Error('Failed to load services')
+  }
+
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Servicios</h1>
+    <div className="mx-auto w-full max-w-4xl">
       <ServicesManager barbershopId={barbershop.id} initialServices={services || []} />
     </div>
   )

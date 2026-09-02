@@ -9,23 +9,30 @@ export default async function BarbersPage() {
 
   const { data: barbershop } = await supabase
     .from('barbershops')
-    .select('*')
+    .select('id')
     .eq('owner_id', user.id)
     .single()
 
   if (!barbershop) redirect('/dashboard')
 
-  const { data: barbers } = await supabase
+  const { data: barbers, error: barbersError } = await supabase
     .from('barbers')
-    .select('*')
+    .select('id, barbershop_id, name, photo_url, bio, sort_order, active, created_at, updated_at')
     .eq('barbershop_id', barbershop.id)
-    .eq('active', true)
-    .order('sort_order')
+    .order('sort_order', { nullsFirst: false })
+    .order('name')
+    .order('id')
+
+  if (barbersError) {
+    throw new Error('Failed to load barbers')
+  }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Barberos</h1>
-      <BarbersManager barbershopId={barbershop.id} initialBarbers={barbers || []} />
+    <div className="mx-auto w-full max-w-4xl">
+      <BarbersManager
+        barbershopId={barbershop.id}
+        initialBarbers={barbers || []}
+      />
     </div>
   )
 }

@@ -4,10 +4,14 @@ import { useState } from 'react'
 import { BarberSchedule } from '@/lib/types'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Save, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import { Minus, Save } from 'lucide-react'
+import Button from '@/components/ui/button'
+import FormField from '@/components/ui/form-field'
+import TimePicker from '@/components/ui/time-picker'
+import { ToastViewport, useToast } from '@/components/ui/toast'
 
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const DAY_LABELS = ['D', 'L', 'M', 'X', 'J', 'V', 'S']
 
 interface DaySchedule {
   day_of_week: number
@@ -25,6 +29,9 @@ export default function ScheduleEditor({ barberId, initialSchedules }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [selectedDay, setSelectedDay] = useState(1)
+  const { toasts, showToast, dismissToast } = useToast()
 
   // Initialize schedule for all 7 days
   const [schedule, setSchedule] = useState<DaySchedule[]>(() => {
@@ -49,107 +56,152 @@ export default function ScheduleEditor({ barberId, initialSchedules }: Props) {
   async function handleSave() {
     setLoading(true)
     setSaved(false)
+    setErrorMessage(null)
 
-    const supabase = createClient()
+    try {
+      const invalidDay = schedule.find(day => (
+        day.is_working && (!day.start_time || !day.end_time || day.start_time >= day.end_time)
+      ))
 
-    // Delete all existing schedules for this barber
-    await supabase
-      .from('barber_schedules')
-      .delete()
-      .eq('barber_id', barberId)
+      if (invalidDay) {
+        setSelectedDay(invalidDay.day_of_week)
+        setErrorMessage('El horario de inicio debe ser anterior al horario de fin.')
+        return
+      }
 
-    // Insert new schedules
-    const schedulesToInsert = schedule.map(s => ({
-      barber_id: barberId,
-      day_of_week: s.day_of_week,
-      is_working: s.is_working,
-      start_time: `${s.start_time}:00`,
-      end_time: `${s.end_time}:00`,
-    }))
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc('replace_barber_weekly_schedule', {
+        p_barber_id: barberId,
+        p_schedule: schedule.map(day => ({
+          day_of_week: day.day_of_week,
+          is_working: day.is_working,
+          start_time: day.is_working ? day.start_time : null,
+          end_time: day.is_working ? day.end_time : null,
+        })),
+      })
 
-    const { error } = await supabase
-      .from('barber_schedules')
-      .insert(schedulesToInsert)
+      if (error || data !== 7) {
+        throw new Error(error?.message || 'WEEKLY_SCHEDULE_REPLACE_FAILED')
+      }
 
-    if (!error) {
       setSaved(true)
+      showToast({ message: 'Horarios guardados', tone: 'success' })
       router.refresh()
+    } catch {
+      const message = 'No pudimos guardar los horarios. Revisalos e intentá nuevamente.'
+      setErrorMessage(message)
+      showToast({ message, tone: 'error' })
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
-  return (
-    <div className="max-w-xl">
-      <Link
-        href="/dashboard/barbers"
-        className="inline-flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)] mb-4"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Volver a barberos
-      </Link>
+  const selectedSchedule = schedule.find(day => day.day_of_week === selectedDay)!
 
+  return (
+    <div>
       {saved && (
         <div className="bg-green-50 text-green-600 text-sm rounded-lg p-3 mb-4">
           ¡Horarios guardados!
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-7 gap-1.5" aria-label="Días de la semana">
         {schedule.map(day => (
-          <div
+          <button
+            type="button"
             key={day.day_of_week}
-            className={`bg-white rounded-xl border p-4 transition-opacity ${
-              day.is_working ? 'border-[var(--border)]' : 'border-[var(--border)] opacity-60'
+            onClick={() => setSelectedDay(day.day_of_week)}
+            aria-pressed={selectedDay === day.day_of_week}
+            aria-label={`${DAY_NAMES[day.day_of_week]}, ${day.is_working ? 'atiende' : 'no atiende'}`}
+            className={`relative flex min-h-10 min-w-0 flex-col items-center justify-center rounded-xl border text-sm font-bold transition-[border-color,background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
+              selectedDay === day.day_of_week
+                ? 'border-[var(--primary)] bg-[var(--primary)] text-white shadow-sm'
+                : day.is_working
+                  ? 'border-purple-200 bg-purple-50/60 text-[var(--foreground)] hover:border-[var(--primary)]'
+                  : 'border-[var(--border)] bg-white text-[var(--muted)] hover:bg-[var(--secondary)]'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={day.is_working}
-                  onChange={e => updateDay(day.day_of_week, 'is_working', e.target.checked)}
-                  className="w-4 h-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]"
-                />
-                <span className={`font-medium ${day.is_working ? '' : 'text-[var(--muted)]'}`}>
-                  {DAY_NAMES[day.day_of_week]}
-                </span>
-              </div>
-
-              {day.is_working && (
-                <div className="flex items-center gap-2 text-sm">
-                  <input
-                    type="time"
-                    value={day.start_time}
-                    onChange={e => updateDay(day.day_of_week, 'start_time', e.target.value)}
-                    className="px-2 py-1 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
-                  />
-                  <span className="text-[var(--muted)]">a</span>
-                  <input
-                    type="time"
-                    value={day.end_time}
-                    onChange={e => updateDay(day.day_of_week, 'end_time', e.target.value)}
-                    className="px-2 py-1 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
-                  />
-                </div>
-              )}
-
-              {!day.is_working && (
-                <span className="text-sm text-[var(--muted)]">No atiende</span>
-              )}
-            </div>
-          </div>
+            <span>{DAY_LABELS[day.day_of_week]}</span>
+            <span className="mt-0.5 flex h-2 items-center justify-center" aria-hidden="true">
+              {day.is_working
+                ? <span className={`h-1.5 w-1.5 rounded-full ${selectedDay === day.day_of_week ? 'bg-white' : 'bg-[var(--primary)]'}`} />
+                : <Minus className="h-2.5 w-2.5" />}
+            </span>
+          </button>
         ))}
       </div>
 
-      <button
+      <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--secondary)]/60 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold">{DAY_NAMES[selectedDay]}</h3>
+            <p className="mt-0.5 text-sm text-[var(--muted)]">Atiende este día</p>
+          </div>
+
+          <label className="inline-flex min-h-11 cursor-pointer items-center gap-2">
+            <span className="text-xs font-semibold text-[var(--muted)]">
+              {selectedSchedule.is_working ? 'ON' : 'OFF'}
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={selectedSchedule.is_working}
+              onChange={event => updateDay(selectedDay, 'is_working', event.target.checked)}
+              className="peer sr-only"
+              aria-label={`Atiende los ${DAY_NAMES[selectedDay].toLowerCase()}`}
+            />
+            <span
+              aria-hidden="true"
+              className="relative h-7 w-12 rounded-full bg-gray-300 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-[var(--primary)] peer-checked:after:translate-x-5 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--primary)] peer-focus-visible:ring-offset-2"
+            />
+          </label>
+        </div>
+
+        {selectedSchedule.is_working ? (
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <FormField label="Desde" htmlFor={`schedule-start-${selectedDay}`}>
+              <TimePicker
+                id={`schedule-start-${selectedDay}`}
+                value={selectedSchedule.start_time}
+                onChange={value => value && updateDay(selectedDay, 'start_time', value)}
+                stepMinutes={15}
+                required
+                ariaLabel={`Horario de inicio del ${DAY_NAMES[selectedDay].toLowerCase()}`}
+              />
+            </FormField>
+            <FormField label="Hasta" htmlFor={`schedule-end-${selectedDay}`}>
+              <TimePicker
+                id={`schedule-end-${selectedDay}`}
+                value={selectedSchedule.end_time}
+                onChange={value => value && updateDay(selectedDay, 'end_time', value)}
+                stepMinutes={15}
+                required
+                ariaLabel={`Horario de fin del ${DAY_NAMES[selectedDay].toLowerCase()}`}
+              />
+            </FormField>
+          </div>
+        ) : (
+          <p className="mt-5 rounded-lg border border-dashed border-[var(--border)] bg-white/70 p-4 text-sm text-[var(--muted)]">
+            No atiende este día.
+          </p>
+        )}
+      </div>
+
+      <Button
         onClick={handleSave}
         disabled={loading}
-        className="mt-6 w-full flex items-center justify-center gap-2 py-3 bg-[var(--primary)] text-white font-semibold rounded-xl hover:bg-[var(--primary-dark)] transition-colors disabled:opacity-50"
+        className="mt-6 w-full"
       >
-        <Save className="w-4 h-4" />
+        <Save className="h-4 w-4" aria-hidden="true" />
         {loading ? 'Guardando...' : 'Guardar horarios'}
-      </button>
+      </Button>
+      {errorMessage && (
+        <p className="mt-3 text-sm font-medium text-red-600" role="alert">
+          {errorMessage}
+        </p>
+      )}
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

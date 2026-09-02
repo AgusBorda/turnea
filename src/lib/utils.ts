@@ -1,50 +1,60 @@
-import { format, addMinutes, parse, isBefore, isEqual } from 'date-fns'
-import { BarberSchedule, BlockedSlot, Appointment, TimeSlot } from './types'
+import { BusySlot, PublicBarberSchedule, PublicBlockedSlot, TimeSlot } from './types'
+import { getLocalDateDayOfWeek, isLocalSlotInPast, LocalDate } from './datetime'
 
 /**
  * Genera los time slots disponibles para un barbero en una fecha dada
  */
 export function generateTimeSlots(
-  date: Date,
-  schedules: BarberSchedule[],
-  appointments: Appointment[],
-  blockedSlots: BlockedSlot[],
+  date: LocalDate,
+  schedules: PublicBarberSchedule[],
+  busySlots: BusySlot[],
+  blockedSlots: PublicBlockedSlot[],
+  timeZone: string,
   slotDuration: number = 30,
   serviceDuration: number = 30
 ): TimeSlot[] {
-  const dayOfWeek = date.getDay()
+  const dayOfWeek = getLocalDateDayOfWeek(date)
   const schedule = schedules.find(s => s.day_of_week === dayOfWeek && s.is_working)
 
   if (!schedule) return []
 
   const slots: TimeSlot[] = []
-  const startTime = parse(schedule.start_time, 'HH:mm:ss', date)
-  const endTime = parse(schedule.end_time, 'HH:mm:ss', date)
+  const startTime = timeToMinutes(schedule.start_time)
+  const endTime = timeToMinutes(schedule.end_time)
 
   let current = startTime
 
-  while (isBefore(current, endTime) || isEqual(current, endTime)) {
-    const slotEnd = addMinutes(current, serviceDuration)
+  while (current <= endTime) {
+    const slotEnd = current + serviceDuration
 
     // No generar slot si se pasa del horario de fin
-    if (!isBefore(slotEnd, endTime) && !isEqual(slotEnd, endTime)) {
+    if (slotEnd > endTime) {
       break
     }
 
-    const timeStr = format(current, 'HH:mm')
-    const timeStrFull = format(current, 'HH:mm:ss')
+    const timeStr = minutesToTime(current, false)
+    const timeStrFull = minutesToTime(current, true)
+
+    if (isLocalSlotInPast(date, timeStrFull, timeZone)) {
+      current += slotDuration
+      continue
+    }
 
     // Verificar si está bloqueado
     const isBlocked = blockedSlots.some(block => {
+      if (block.date !== date) return false
       if (block.all_day) return true
       if (!block.start_time || !block.end_time) return false
-      return timeStrFull >= block.start_time && timeStrFull < block.end_time
+      const blockStart = timeToMinutes(block.start_time)
+      const blockEnd = timeToMinutes(block.end_time)
+      return current < blockEnd && slotEnd > blockStart
     })
 
-    // Verificar si hay turno existente
-    const hasAppointment = appointments.some(apt => {
-      if (apt.status === 'cancelled') return false
-      return timeStrFull >= apt.start_time && timeStrFull < apt.end_time
+    const hasAppointment = busySlots.some(slot => {
+      if (slot.date !== date) return false
+      const appointmentStart = timeToMinutes(slot.start_time)
+      const appointmentEnd = timeToMinutes(slot.end_time)
+      return current < appointmentEnd && slotEnd > appointmentStart
     })
 
     slots.push({
@@ -52,10 +62,22 @@ export function generateTimeSlots(
       available: !isBlocked && !hasAppointment,
     })
 
-    current = addMinutes(current, slotDuration)
+    current += slotDuration
   }
 
   return slots
+}
+
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+function minutesToTime(minutes: number, includeSeconds: boolean): string {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  const value = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`
+  return includeSeconds ? `${value}:00` : value
 }
 
 /**

@@ -1,170 +1,119 @@
-import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
-import { Check, MapPin, Calendar, Clock, Phone, AlertCircle } from 'lucide-react'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
+import { AlertCircle, Calendar, Check, Clock, MapPin, Phone } from 'lucide-react'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
+
+import { formatLocalDate } from '@/lib/datetime'
+import { createClient } from '@/lib/supabase/server'
+import type { PublicBarbershop } from '@/lib/types'
+import PaymentStatusPolling from './payment-status-polling'
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 interface PageProps {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{
-    collection_id?: string
-    collection_status?: string
-    external_reference?: string
-    preference_id?: string
-    payment_id?: string
-  }>
+  searchParams: Promise<{ external_reference?: string }>
+}
+
+interface BarbershopView {
+  id: string
+  name: string
+  slug: string
+  address: string | null
+  phone: string | null
+}
+
+interface AppointmentView {
+  date: string
+  start_time: string
+  status: string
+  deposit_status: string | null
+  deposit_amount: number | null
+  barber_name: string
+  service_name: string | null
+  service_price: number | null
 }
 
 export default async function SuccessPage({ params, searchParams }: PageProps) {
   const { slug } = await params
-  const sp = await searchParams
+  const { external_reference: appointmentId } = await searchParams
 
-  const appointmentId = sp.external_reference
-  const paymentId = sp.collection_id || sp.payment_id
-  const collectionStatus = sp.collection_status
-
-  if (!appointmentId) {
-    return <ErrorCard slug={slug} message="No encontramos tu reserva. Contactá a la barbería." />
+  if (!appointmentId || !UUID_PATTERN.test(appointmentId)) {
+    return <ErrorCard slug={slug} message="No encontramos esa reserva." />
   }
 
   const supabase = await createClient()
+  const { data: barbershopData, error: barbershopError } = await supabase
+    .rpc('get_public_barbershop_by_slug', { p_slug: slug })
+    .maybeSingle()
+  const barbershop = barbershopData as PublicBarbershop | null
 
-  // Fetch barbershop (server-side, includes mp_access_token)
-  const { data: barbershop } = await supabase
-    .from('barbershops')
-    .select('*')
-    .eq('slug', slug)
-    .single()
+  if (barbershopError) {
+    return <ErrorCard slug={slug} message="No pudimos consultar el estado de tu reserva." />
+  }
 
   if (!barbershop) notFound()
 
-  // Fetch appointment
-  const { data: appointment } = await supabase
-    .from('appointments')
-    .select('*, barbers(name), services(name, price, duration)')
-    .eq('id', appointmentId)
-    .single()
+  const { data: appointmentData, error: appointmentError } = await supabase
+    .rpc('get_public_appointment_result', {
+      p_appointment_id: appointmentId,
+      p_barbershop_id: barbershop.id,
+    })
+    .maybeSingle()
+  const appointment = appointmentData as AppointmentView | null
 
-  if (!appointment) {
-    return <ErrorCard slug={slug} message="No encontramos tu turno. Contactá a la barbería." />
+  if (appointmentError || !appointment) {
+    return <ErrorCard slug={slug} message="No encontramos esa reserva." />
   }
 
-  // If already confirmed (webhook processed it before redirect), just show success
-  if (appointment.status === 'confirmed') {
-    return <SuccessCard barbershop={barbershop} appointment={appointment} />
-  }
-
-  // Verify payment with MP API
-  let paymentVerified = false
-  let verifyError = ''
-
-  if (collectionStatus === 'approved' && paymentId && barbershop.mp_access_token) {
-    try {
-      const mpRes = await fetch(
-        `https://api.mercadopago.com/v1/payments/${paymentId}`,
-        {
-          headers: { Authorization: `Bearer ${barbershop.mp_access_token}` },
-          cache: 'no-store',
-        }
-      )
-
-      if (mpRes.ok) {
-        const payment = await mpRes.json()
-        // Accept if approved, regardless of external_reference mismatch
-        if (payment.status === 'approved') {
-          await supabase
-            .from('appointments')
-            .update({
-              status: 'confirmed',
-              deposit_status: 'paid',
-              mp_payment_id: String(paymentId),
-            })
-            .eq('id', appointmentId)
-
-          paymentVerified = true
-        } else {
-          verifyError = `Estado del pago: ${payment.status}`
-        }
-      } else {
-        // MP API call failed — trust the redirect params from MP
-        if (collectionStatus === 'approved') {
-          await supabase
-            .from('appointments')
-            .update({
-              status: 'confirmed',
-              deposit_status: 'paid',
-              mp_payment_id: String(paymentId),
-            })
-            .eq('id', appointmentId)
-
-          paymentVerified = true
-        } else {
-          verifyError = 'No se pudo verificar el pago.'
-        }
-      }
-    } catch {
-      // Network error — trust MP redirect
-      await supabase
-        .from('appointments')
-        .update({
-          status: 'confirmed',
-          deposit_status: 'paid',
-          mp_payment_id: String(paymentId),
-        })
-        .eq('id', appointmentId)
-
-      paymentVerified = true
-    }
-  } else if (collectionStatus === 'pending') {
-    await supabase
-      .from('appointments')
-      .update({ deposit_status: 'pending' })
-      .eq('id', appointmentId)
-
-    return <PendingCard barbershop={barbershop} appointment={appointment} />
-  } else {
-    verifyError = 'El pago no fue aprobado.'
-  }
-
-  if (!paymentVerified) {
-    // Cancel the appointment
-    await supabase
-      .from('appointments')
-      .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: 'payment_failed' })
-      .eq('id', appointmentId)
-
+  if (appointment.status === 'confirmed' && appointment.deposit_status === 'paid') {
     return (
-      <ErrorCard
-        slug={slug}
-        message={verifyError || 'El pago no fue procesado correctamente.'}
-        showRetry
+      <SuccessCard
+        barbershop={barbershop}
+        appointment={appointment}
       />
     )
   }
 
-  return <SuccessCard barbershop={barbershop} appointment={appointment} />
+  if (appointment.status === 'pending_payment' && appointment.deposit_status === 'pending') {
+    return (
+      <PendingCard
+        barbershop={barbershop}
+        appointment={appointment}
+        appointmentId={appointmentId}
+      />
+    )
+  }
+
+  return (
+    <ErrorCard
+      slug={slug}
+      message="El pago no figura confirmado. Si ya pagaste, contactá a la barbería."
+    />
+  )
 }
 
-function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment: any }) {
-  const apt = appointment
-  const depositAmt = apt.deposit_amount ?? 0
-  const servicePrice = apt.services?.price ?? 0
-  const remaining = servicePrice - depositAmt
+function SuccessCard({
+  barbershop,
+  appointment,
+}: {
+  barbershop: BarbershopView
+  appointment: AppointmentView
+}) {
+  const depositAmount = Number(appointment.deposit_amount) || 0
+  const servicePrice = Number(appointment.service_price) || 0
+  const remaining = Math.max(servicePrice - depositAmount, 0)
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Success icon */}
         <div className="text-center mb-6">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Check className="w-10 h-10 text-green-600" />
           </div>
-          <h1 className="text-2xl font-bold text-green-700">¡Seña confirmada!</h1>
-          <p className="text-gray-500 mt-1">Tu turno quedó reservado</p>
+          <h1 className="text-2xl font-bold text-green-700">¡Pago confirmado!</h1>
+          <p className="text-gray-500 mt-1">Tu turno quedó reservado.</p>
         </div>
 
-        {/* Appointment details */}
         <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4 mb-4">
           <div className="flex items-center justify-between pb-3 border-b border-gray-200">
             <span className="font-semibold text-lg">{barbershop.name}</span>
@@ -173,48 +122,13 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
             </span>
           </div>
 
-          <div className="space-y-3 text-sm">
-            <InfoRow icon={<Calendar className="w-4 h-4" />} label="Fecha">
-              <span className="font-medium capitalize">
-                {format(new Date(apt.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}
-              </span>
-            </InfoRow>
-            <InfoRow icon={<Clock className="w-4 h-4" />} label="Horario">
-              <span className="font-medium">{apt.start_time.slice(0, 5)} hs</span>
-            </InfoRow>
-            <InfoRow icon={null} label="Servicio">
-              <span className="font-medium">{apt.services?.name}</span>
-            </InfoRow>
-            <InfoRow icon={null} label="Barbero">
-              <span className="font-medium">{apt.barbers?.name}</span>
-            </InfoRow>
-
-            {/* Dirección — solo visible después del pago */}
-            {barbershop.address && (
-              <InfoRow icon={<MapPin className="w-4 h-4 text-purple-600" />} label="Dirección">
-                <span className="font-medium text-purple-600">{barbershop.address}</span>
-              </InfoRow>
-            )}
-
-            {barbershop.phone && (
-              <InfoRow icon={<Phone className="w-4 h-4" />} label="Contacto">
-                <a
-                  href={`https://wa.me/549${barbershop.phone}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-purple-600 hover:underline"
-                >
-                  WhatsApp
-                </a>
-              </InfoRow>
-            )}
-          </div>
+          <AppointmentDetails barbershop={barbershop} appointment={appointment} />
 
           <div className="border-t border-gray-200 pt-3 space-y-1">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Seña pagada</span>
               <span className="font-bold text-green-600">
-                ${depositAmt.toLocaleString('es-AR')} ✓
+                ${depositAmount.toLocaleString('es-AR')} ✓
               </span>
             </div>
             {remaining > 0 && (
@@ -226,15 +140,8 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-500">
-          Guardá esta página como comprobante. ¡Te esperamos, {apt.client_name}!
-        </p>
-
         <div className="mt-6 text-center">
-          <Link
-            href={`/${barbershop.slug}`}
-            className="text-sm text-purple-600 hover:underline"
-          >
+          <Link href={`/${barbershop.slug}`} className="text-sm text-purple-600 hover:underline">
             ← Volver a {barbershop.name}
           </Link>
         </div>
@@ -243,21 +150,30 @@ function SuccessCard({ barbershop, appointment }: { barbershop: any; appointment
   )
 }
 
-function PendingCard({ barbershop, appointment }: { barbershop: any; appointment: any }) {
+function PendingCard({
+  barbershop,
+  appointment,
+  appointmentId,
+}: {
+  barbershop: BarbershopView
+  appointment: AppointmentView
+  appointmentId: string
+}) {
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <PaymentStatusPolling appointmentId={appointmentId} slug={barbershop.slug} />
       <div className="w-full max-w-md text-center">
         <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Clock className="w-10 h-10 text-yellow-600" />
         </div>
-        <h1 className="text-2xl font-bold text-yellow-700">Pago pendiente</h1>
+        <h1 className="text-2xl font-bold text-yellow-700">Estamos verificando tu pago</h1>
         <p className="text-gray-500 mt-2 mb-6">
-          Tu pago está siendo procesado. Una vez acreditado, recibirás la confirmación.
+          Puede tardar unos segundos. Esta pantalla se actualizará automáticamente cuando recibamos la confirmación.
         </p>
         <div className="bg-white rounded-xl border border-gray-200 p-4 text-sm mb-4">
-          <p className="font-medium">{appointment.services?.name}</p>
+          <p className="font-medium">{appointment.service_name}</p>
           <p className="text-gray-500">
-            {format(new Date(appointment.date + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}
+            {formatLocalDate(appointment.date, { weekday: 'long', day: 'numeric', month: 'long' })}
             {' — '}
             {appointment.start_time.slice(0, 5)} hs
           </p>
@@ -280,23 +196,65 @@ function PendingCard({ barbershop, appointment }: { barbershop: any; appointment
   )
 }
 
-function ErrorCard({ slug, message, showRetry }: { slug: string; message: string; showRetry?: boolean }) {
+function AppointmentDetails({
+  barbershop,
+  appointment,
+}: {
+  barbershop: BarbershopView
+  appointment: AppointmentView
+}) {
+  return (
+    <div className="space-y-3 text-sm">
+      <InfoRow icon={<Calendar className="w-4 h-4" />} label="Fecha">
+        <span className="font-medium capitalize">
+          {formatLocalDate(appointment.date, { weekday: 'long', day: 'numeric', month: 'long' })}
+        </span>
+      </InfoRow>
+      <InfoRow icon={<Clock className="w-4 h-4" />} label="Horario">
+        <span className="font-medium">{appointment.start_time.slice(0, 5)} hs</span>
+      </InfoRow>
+      <InfoRow icon={null} label="Servicio">
+        <span className="font-medium">{appointment.service_name}</span>
+      </InfoRow>
+      <InfoRow icon={null} label="Barbero">
+        <span className="font-medium">{appointment.barber_name}</span>
+      </InfoRow>
+      {barbershop.address && (
+        <InfoRow icon={<MapPin className="w-4 h-4 text-purple-600" />} label="Dirección">
+          <span className="font-medium text-purple-600">{barbershop.address}</span>
+        </InfoRow>
+      )}
+      {barbershop.phone && (
+        <InfoRow icon={<Phone className="w-4 h-4" />} label="Contacto">
+          <a
+            href={`https://wa.me/549${barbershop.phone}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-purple-600 hover:underline"
+          >
+            WhatsApp
+          </a>
+        </InfoRow>
+      )}
+    </div>
+  )
+}
+
+function ErrorCard({ slug, message }: { slug: string; message: string }) {
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md text-center">
         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <AlertCircle className="w-10 h-10 text-red-600" />
         </div>
-        <h1 className="text-2xl font-bold text-red-700">Pago no procesado</h1>
+        <h1 className="text-2xl font-bold text-red-700">No pudimos mostrar la reserva</h1>
         <p className="text-[var(--muted)] mt-2 mb-6">{message}</p>
-        {showRetry && (
-          <Link
-            href={`/${slug}`}
-            className="inline-block px-6 py-3 bg-[var(--primary)] text-white font-semibold rounded-xl hover:bg-[var(--primary-dark)] transition-colors"
-          >
-            Intentar de nuevo
-          </Link>
-        )}
+        <Link
+          href={`/${slug}`}
+          className="inline-block px-6 py-3 bg-[var(--primary)] text-white font-semibold rounded-xl hover:bg-[var(--primary-dark)] transition-colors"
+        >
+          Volver a la barbería
+        </Link>
       </div>
     </main>
   )

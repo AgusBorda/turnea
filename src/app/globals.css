@@ -40,6 +40,28 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
 
+/* Progressive polish for native date/time controls. Unsupported browsers
+   keep their native indicator and behavior unchanged. */
+.turnea-input {
+  cursor: text;
+  caret-color: var(--primary);
+}
+
+.turnea-input:disabled {
+  cursor: not-allowed;
+}
+
+.turnea-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 150ms ease;
+}
+
+.turnea-input:hover::-webkit-calendar-picker-indicator,
+.turnea-input:focus-visible::-webkit-calendar-picker-indicator {
+  opacity: 0.8;
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
