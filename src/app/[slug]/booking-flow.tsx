@@ -255,12 +255,30 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
             start_time: selectedTime,
             client_name: clientName.trim(),
             client_phone: clientPhone.trim(),
+            // Consent snapshot only. Checkout/PostgreSQL recalculate every amount.
+            quoted_payment: paymentQuote,
           }),
         })
 
-        const data = await res.json()
+        const data: {
+          init_point?: string
+          error?: string
+          code?: string
+          payment?: PaymentQuote
+        } = await res.json()
+        if (
+          res.status === 409
+          && data.code === 'PAYMENT_QUOTE_CHANGED'
+          && data.payment
+        ) {
+          setPaymentQuote(data.payment)
+          throw new Error('El importe cambió. Revisá el nuevo resumen y confirmá nuevamente.')
+        }
         if (!res.ok) {
           throw new Error(data.error || 'Error al procesar seña')
+        }
+        if (!data.init_point) {
+          throw new Error('Mercado Pago devolvió una respuesta inválida')
         }
 
         // Redirect to Mercado Pago
