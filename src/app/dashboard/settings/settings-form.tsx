@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { ExternalLink } from 'lucide-react'
+import type { MercadoPagoSettlementOption, ProcessingFeeMode } from '@/lib/types'
 
 const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
 const TIMEZONE_OPTIONS = [
@@ -29,14 +30,24 @@ interface SettingsBarbershop {
   deposit_percentage: number
   advance_booking_days: number
   mp_configured: boolean
+  processing_fee_mode: ProcessingFeeMode
+  mp_settlement_option: MercadoPagoSettlementOption
+  effective_processing_rate: number
+}
+
+interface ProcessingRatePreset {
+  settlement_option: MercadoPagoSettlementOption
+  label: string
+  suggested_effective_rate: number | null
 }
 
 interface Props {
   barbershop: SettingsBarbershop | null
+  processingRatePresets: ProcessingRatePreset[]
   userId: string
 }
 
-export default function SettingsForm({ barbershop, userId }: Props) {
+export default function SettingsForm({ barbershop, processingRatePresets, userId }: Props) {
   const [name, setName] = useState(barbershop?.name || '')
   const [slug, setSlug] = useState(barbershop?.slug || '')
   const [description, setDescription] = useState(barbershop?.description || '')
@@ -51,6 +62,15 @@ export default function SettingsForm({ barbershop, userId }: Props) {
   const [depositRequired, setDepositRequired] = useState(barbershop?.deposit_required || false)
   const [depositPercentage, setDepositPercentage] = useState(barbershop?.deposit_percentage || 50)
   const [mpConfigured, setMpConfigured] = useState(barbershop?.mp_configured || false)
+  const [processingFeeMode, setProcessingFeeMode] = useState<ProcessingFeeMode>(
+    barbershop?.processing_fee_mode || 'barbershop_absorbs'
+  )
+  const [mpSettlementOption, setMpSettlementOption] = useState<MercadoPagoSettlementOption>(
+    barbershop?.mp_settlement_option || 'custom'
+  )
+  const [effectiveProcessingRatePercent, setEffectiveProcessingRatePercent] = useState(
+    String(Number(barbershop?.effective_processing_rate || 0) * 100)
+  )
   const [newMpAccessToken, setNewMpAccessToken] = useState('')
   const [advanceBookingDays, setAdvanceBookingDays] = useState(barbershop?.advance_booking_days || 30)
   const [loading, setLoading] = useState(false)
@@ -91,6 +111,12 @@ export default function SettingsForm({ barbershop, userId }: Props) {
     e.preventDefault()
     if (!name.trim() || !slug.trim()) return
 
+    const effectiveRatePercent = Number(effectiveProcessingRatePercent)
+    if (!Number.isFinite(effectiveRatePercent) || effectiveRatePercent < 0 || effectiveRatePercent > 15) {
+      setError('El costo efectivo debe estar entre 0% y 15%.')
+      return
+    }
+
     setLoading(true)
     setError('')
     setSaved(false)
@@ -108,6 +134,9 @@ export default function SettingsForm({ barbershop, userId }: Props) {
       deposit_required: depositRequired,
       deposit_percentage: depositPercentage,
       advance_booking_days: advanceBookingDays,
+      processing_fee_mode: processingFeeMode,
+      mp_settlement_option: mpSettlementOption,
+      effective_processing_rate: effectiveRatePercent / 100,
     }
     const accessToken = newMpAccessToken.trim()
 
@@ -337,6 +366,87 @@ export default function SettingsForm({ barbershop, userId }: Props) {
           <p className="text-xs text-[var(--muted)] mt-0.5">
             Conectá tu cuenta para cobrar señas automáticamente.
           </p>
+        </div>
+
+        <div className="space-y-3 border-t border-[var(--border)] pt-4">
+          <div>
+            <label className="block text-sm font-medium mb-1" htmlFor="mp-settlement-option">
+              Plazo de acreditación
+            </label>
+            <select
+              id="mp-settlement-option"
+              value={mpSettlementOption}
+              onChange={event => {
+                const option = event.target.value as MercadoPagoSettlementOption
+                setMpSettlementOption(option)
+                const preset = processingRatePresets.find(item => item.settlement_option === option)
+                if (preset?.suggested_effective_rate != null) {
+                  setEffectiveProcessingRatePercent(String(Number(preset.suggested_effective_rate) * 100))
+                }
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] bg-white"
+            >
+              {processingRatePresets.map(preset => (
+                <option key={preset.settlement_option} value={preset.settlement_option}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" htmlFor="effective-processing-rate">
+              Costo efectivo estimado (%)
+            </label>
+            <input
+              id="effective-processing-rate"
+              type="number"
+              value={effectiveProcessingRatePercent}
+              onChange={event => setEffectiveProcessingRatePercent(event.target.value)}
+              min={0}
+              max={15}
+              step="0.0001"
+              required
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+            />
+            <p className="text-xs text-[var(--muted)] mt-1">
+              Es una estimación editable. Los presets no reemplazan las condiciones reales de tu cuenta.
+            </p>
+          </div>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Quién absorbe el costo</legend>
+            <label className="flex items-start gap-3 rounded-lg border border-[var(--border)] p-3">
+              <input
+                type="radio"
+                name="processing-fee-mode"
+                value="barbershop_absorbs"
+                checked={processingFeeMode === 'barbershop_absorbs'}
+                onChange={() => setProcessingFeeMode('barbershop_absorbs')}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-sm font-medium">Mi barbería</span>
+                <span className="block text-xs text-[var(--muted)]">El cliente paga solamente la seña.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-lg border border-[var(--border)] p-3">
+              <input
+                type="radio"
+                name="processing-fee-mode"
+                value="customer_covers"
+                checked={processingFeeMode === 'customer_covers'}
+                onChange={() => setProcessingFeeMode('customer_covers')}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-sm font-medium">El cliente</span>
+                <span className="block text-xs text-[var(--muted)]">
+                  Se agregará un Costo de procesamiento en una etapa posterior de P4.
+                </span>
+              </span>
+            </label>
+          </fieldset>
         </div>
 
         {mpConfigured && (
