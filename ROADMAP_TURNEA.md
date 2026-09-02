@@ -787,23 +787,33 @@ master
 
 ---
 
-### 🚧 Production Readiness P2C — Harden public default privileges
+### ✅ Production Readiness P2C — Harden public default privileges
 
 **Objetivo:** evitar que objetos futuros creados en `public` hereden privilegios implícitos para roles cliente y restaurar una matriz explícita de ejecución para las RPC actuales.
 
 * [x] Auditar el origen de los default privileges amplios.
 * [x] Clasificar RPC públicas, owner, server e internas/cron.
 * [x] Crear una migration nueva sin modificar migrations históricas.
-* [ ] Aplicar y validar la migration en Supabase DEV.
-* [ ] Repetir el fresh-install completo con defaults endurecidos.
+* [x] Aplicar y validar la migration en Supabase DEV.
+* [x] Repetir el fresh-install completo con defaults endurecidos.
 
-**Estado:** 🚧 Implementado localmente. Compatibilidad con Supabase hosted corregida; pendiente reintento y validación en DEV, seguido por fresh-install. PROD intacto.
+**Validación final:**
+* Supabase DEV validado con regresión funcional aprobada en Login, Servicios, Barberos, Disponibilidad, Agenda, Booking y Checkout.
+* Fresh install hosted descartable aprobado con las 32 migrations alineadas entre Local y Remote; `db push --dry-run` confirmó que la base estaba al día.
+* `pg_cron 1.6.4` y `uuid-ossp 1.1` validados; `pg_net` queda ausente sin dependencias de Turnea.
+* Cron validado con un único job activo `turnea-cleanup-expired-pending-payments`, programado cada cinco minutos.
+* Default privileges de `postgres/public` endurecidos: roles cliente sin privilegios implícitos, `service_role` técnico sólo para tablas/secuencias y funciones con `EXECUTE` opt-in.
+* Grants RPC validados por contrato: públicas para `anon/authenticated`, owner sólo para `authenticated`, server sólo para `service_role` e internas/cron sin acceso cliente.
+* `create_appointment_atomic` conserva acceso explícito para `anon`, `authenticated` y `service_role`.
+* Supabase PROD permanece intacto.
+
+**Estado:** ✅ Completado.
 
 ---
 
 ## 📌 Ticket actual
 
-**Actual:** Production Readiness P2C — Harden public default privileges. Pendiente aplicación y validación en Supabase DEV.
+**Próximo:** Production Readiness P3 — Build Clean Supabase PROD.
 
 ---
 
