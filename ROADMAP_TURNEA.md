@@ -811,9 +811,55 @@ master
 
 ---
 
+### ✅ Production Readiness P3 — Build Clean Supabase PROD
+
+**Objetivo:** construir un entorno PROD limpio desde las migrations vigentes y validar el lanzamiento real de Turnea para un piloto controlado.
+
+* [x] Crear el nuevo Supabase PROD y aplicar las 32 migrations desde cero.
+* [x] Confirmar migration history Local/Remote alineado y `db push --dry-run` al día.
+* [x] Validar `pg_cron`, cleanup único, default privileges y grants RPC.
+* [x] Configurar Auth de PROD.
+* [x] Promover el release aprobado de `develop` a `master`.
+* [x] Conectar Vercel Production al nuevo Supabase PROD.
+* [x] Validar onboarding y operación owner en Production.
+* [x] Validar booking real sin seña.
+* [x] Validar pago real con seña y confirmación por webhook.
+
+**Validación final de Production:**
+* Supabase PROD limpio `epwftrxjbxneqlqqspyv` quedó con 32/32 migrations y sin cambios pendientes.
+* Vercel Production quedó operativo en `https://turnea.vercel.app`, con Auth y configuración de entorno productiva validados.
+* Landing, Login, Signup, onboarding, Dashboard, Agenda, Barberos, Servicios, Disponibilidad, Settings y Booking aprobaron el smoke test.
+* El primer turno real sin seña se creó correctamente.
+* Checkout Pro calculó y presentó correctamente la seña del primer pago real.
+* Mercado Pago acreditó el pago y la verificación productiva del webhook confirmó atómicamente el appointment.
+* El retorno desde Mercado Pago y el estado final Confirmado en Turnea fueron correctos.
+* La comisión y el plazo de acreditación de Mercado Pago se observaron como comportamiento esperado y quedan fuera de P3.
+* El refund mediante API conserva el workaround manual documentado.
+* El onboarding Mercado Pago multi-barbería no se considera resuelto y requiere arquitectura futura.
+
+**Estado:** ✅ Completado. PROD operativo para piloto controlado.
+
+---
+
+### ⏳ Production Readiness P4 — Mercado Pago Service Fee / Net Deposit Protection
+
+**Objetivo futuro:** permitir que cada barbería configure el traslado al cliente del costo de procesamiento/acreditación de Mercado Pago, preservando como referencia visible el valor real de la seña.
+
+* [ ] Definir el modelo matemático y contractual antes de implementar.
+* [ ] Mostrar la seña y una tasa de servicio como conceptos separados.
+* [ ] Calcular el total como `seña + tasa de servicio`.
+* [ ] Buscar que el neto recibido por la barbería sea aproximadamente igual a la seña definida.
+* [ ] Configurar porcentaje y política por barbería.
+* [ ] Contemplar que la comisión depende del plazo de acreditación elegido por el seller.
+* [ ] Diseñar validaciones de monto, webhook, conciliación, refunds y transparencia al cliente.
+
+**Estado:** ⏳ Pendiente de diseño. No implementar sin validación matemática, contractual y de producto.
+
+---
+
 ## 📌 Ticket actual
 
-**Próximo:** Production Readiness P3 — Build Clean Supabase PROD.
+**Próximo:** Production Readiness P4 — Mercado Pago Service Fee / Net Deposit Protection.
 
 ---
 
