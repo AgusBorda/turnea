@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ExternalLink } from 'lucide-react'
 import type { MercadoPagoSettlementOption, ProcessingFeeMode } from '@/lib/types'
 import {
+  calculateEffectiveProcessingRate,
   calculateProcessingFee,
   effectiveRateFromPercentage,
 } from '@/lib/payments/processing-fee'
@@ -36,13 +37,15 @@ interface SettingsBarbershop {
   mp_configured: boolean
   processing_fee_mode: ProcessingFeeMode
   mp_settlement_option: MercadoPagoSettlementOption
+  mp_base_processing_rate: number | null
+  processing_fee_vat_rate: number
   effective_processing_rate: number
 }
 
 interface ProcessingRatePreset {
   settlement_option: MercadoPagoSettlementOption
   label: string
-  suggested_effective_rate: number | null
+  suggested_base_rate: number | null
 }
 
 interface Props {
@@ -72,8 +75,10 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   const [mpSettlementOption, setMpSettlementOption] = useState<MercadoPagoSettlementOption>(
     barbershop?.mp_settlement_option || 'custom'
   )
-  const [effectiveProcessingRatePercent, setEffectiveProcessingRatePercent] = useState(
-    String(Number(barbershop?.effective_processing_rate || 0) * 100)
+  const [baseProcessingRatePercent, setBaseProcessingRatePercent] = useState(
+    barbershop?.mp_base_processing_rate == null
+      ? ''
+      : String(Number(barbershop.mp_base_processing_rate) * 100)
   )
   const [newMpAccessToken, setNewMpAccessToken] = useState('')
   const [advanceBookingDays, setAdvanceBookingDays] = useState(barbershop?.advance_booking_days || 30)
@@ -84,13 +89,32 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   const selectedProcessingRatePreset = processingRatePresets.find(
     preset => preset.settlement_option === mpSettlementOption
   )
+  const vatRate = String(barbershop?.processing_fee_vat_rate ?? 0.21)
+  const vatRatePercent = (Number(vatRate) * 100).toLocaleString('es-AR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+  const hasLegacyEffectiveOnlyRate = Boolean(
+    barbershop
+    && barbershop.mp_base_processing_rate == null
+    && Number(barbershop.effective_processing_rate) > 0
+  )
+  let effectiveProcessingRate = hasLegacyEffectiveOnlyRate
+    ? String(barbershop?.effective_processing_rate ?? 0)
+    : '0.000000'
   let processingFeePreview: ReturnType<typeof calculateProcessingFee> | null = null
 
   try {
+    if (baseProcessingRatePercent.trim()) {
+      effectiveProcessingRate = calculateEffectiveProcessingRate(
+        effectiveRateFromPercentage(baseProcessingRatePercent),
+        vatRate
+      )
+    }
     processingFeePreview = calculateProcessingFee({
       depositAmount: '1500.00',
       processingFeeMode,
-      effectiveRate: effectiveRateFromPercentage(effectiveProcessingRatePercent),
+      effectiveRate: effectiveProcessingRate,
       currency: 'ARS',
     })
   } catch {
@@ -103,6 +127,20 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(amount))
+
+  function formatBaseRateInput() {
+    if (!baseProcessingRatePercent.trim()) return
+
+    try {
+      const normalizedRate = effectiveRateFromPercentage(baseProcessingRatePercent)
+      setBaseProcessingRatePercent((Number(normalizedRate) * 100).toLocaleString('es-AR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+      }))
+    } catch {
+      // Validation remains visible on submit and in the calculation preview.
+    }
+  }
 
   function generateSlug(text: string): string {
     return text
@@ -137,11 +175,16 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     e.preventDefault()
     if (!name.trim() || !slug.trim()) return
 
-    let effectiveProcessingRate: string
+    let baseProcessingRate: string | null = null
     try {
-      effectiveProcessingRate = effectiveRateFromPercentage(effectiveProcessingRatePercent)
+      if (baseProcessingRatePercent.trim()) {
+        baseProcessingRate = effectiveRateFromPercentage(baseProcessingRatePercent)
+        calculateEffectiveProcessingRate(baseProcessingRate, vatRate)
+      } else if (!hasLegacyEffectiveOnlyRate) {
+        baseProcessingRate = '0.000000'
+      }
     } catch {
-      setError('El costo efectivo debe estar entre 0% y 15%.')
+      setError('La tasa base y su costo efectivo deben estar entre 0% y 15%.')
       return
     }
 
@@ -164,7 +207,9 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
       advance_booking_days: advanceBookingDays,
       processing_fee_mode: processingFeeMode,
       mp_settlement_option: mpSettlementOption,
-      effective_processing_rate: effectiveProcessingRate,
+      ...(baseProcessingRate !== null && {
+        mp_base_processing_rate: baseProcessingRate,
+      }),
     }
     const accessToken = newMpAccessToken.trim()
 
@@ -409,9 +454,9 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
                     aria-pressed={selected}
                     onClick={() => {
                       setMpSettlementOption(preset.settlement_option)
-                      if (preset.suggested_effective_rate != null) {
-                        setEffectiveProcessingRatePercent(
-                          String(Number(preset.suggested_effective_rate) * 100)
+                      if (preset.suggested_base_rate != null) {
+                        setBaseProcessingRatePercent(
+                          String(Number(preset.suggested_base_rate) * 100)
                         )
                       }
                     }}
@@ -423,38 +468,60 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
                   >
                     <span className="block text-sm font-medium">{preset.label}</span>
                     <span className="block text-xs text-[var(--muted)] mt-0.5">
-                      {preset.suggested_effective_rate == null
+                      {preset.suggested_base_rate == null
                         ? 'Porcentaje definido manualmente'
-                        : `Referencia: ${Number(preset.suggested_effective_rate) * 100}%`}
+                        : `Tasa base sugerida: ${(Number(preset.suggested_base_rate) * 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`}
                     </span>
                   </button>
                 )
               })}
             </div>
-            {selectedProcessingRatePreset?.suggested_effective_rate == null && (
+            {selectedProcessingRatePreset?.suggested_base_rate == null && (
               <p className="mt-2 text-xs text-amber-700">
-                Este plazo no tiene un porcentaje sugerido. Verificá e ingresá el costo efectivo de tu cuenta.
+                Este plazo no tiene una tasa sugerida. Verificá e ingresá la tasa base que muestra tu cuenta.
               </p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="effective-processing-rate">
-              Costo efectivo estimado (%)
+            <label className="block text-sm font-medium mb-1" htmlFor="base-processing-rate">
+              Tasa que te muestra Mercado Pago
             </label>
-            <input
-              id="effective-processing-rate"
-              type="number"
-              value={effectiveProcessingRatePercent}
-              onChange={event => setEffectiveProcessingRatePercent(event.target.value)}
-              min={0}
-              max={15}
-              step="0.0001"
-              required
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
-            />
+            <div className="relative">
+              <input
+                id="base-processing-rate"
+                type="text"
+                inputMode="decimal"
+                value={baseProcessingRatePercent}
+                onChange={event => setBaseProcessingRatePercent(event.target.value)}
+                onBlur={formatBaseRateInput}
+                placeholder={hasLegacyEffectiveOnlyRate ? 'Ingresá la tasa base para actualizar' : '6,60'}
+                className="w-full rounded-lg border border-[var(--border)] px-3 py-2 pr-9 focus:border-[var(--primary)] focus:outline-none"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-[var(--muted)]">
+                %
+              </span>
+            </div>
             <p className="text-xs text-[var(--muted)] mt-1">
-              Es una estimación editable. El importe neto acreditado puede variar según las condiciones de tu cuenta de Mercado Pago.
+              Podés usar coma o punto decimal. Ejemplo: 6,60%.
+            </p>
+            <dl className="mt-3 space-y-1.5 rounded-lg bg-[var(--secondary)]/45 px-3 py-2 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-[var(--muted)]">IVA sobre el costo</dt>
+                <dd>{vatRatePercent}%</dd>
+              </div>
+              <div className="flex justify-between gap-4 font-medium">
+                <dt>Costo efectivo estimado</dt>
+                <dd>{(Number(effectiveProcessingRate) * 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}%</dd>
+              </div>
+            </dl>
+            {hasLegacyEffectiveOnlyRate && !baseProcessingRatePercent.trim() && (
+              <p className="mt-2 text-xs text-amber-700">
+                Se conserva tu costo efectivo anterior de {(Number(barbershop?.effective_processing_rate ?? 0) * 100).toLocaleString('es-AR')}% hasta que ingreses una tasa base.
+              </p>
+            )}
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Turnea usa el costo efectivo estimado para calcular el Costo de procesamiento. Mercado Pago puede aplicar cargos adicionales según provincia, medio de pago u otras condiciones.
             </p>
           </div>
 
@@ -493,7 +560,8 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           </fieldset>
 
           <div className="rounded-xl border border-[var(--border)] bg-[var(--secondary)]/45 p-4">
-            <p className="text-sm font-semibold">Vista previa sobre una seña de $1.500,00</p>
+            <p className="text-sm font-semibold">Ejemplo de cálculo</p>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">Para una seña hipotética de $1.500,00</p>
             {processingFeePreview ? (
               <div className="mt-3 space-y-1.5 text-sm">
                 <div className="flex justify-between gap-4">

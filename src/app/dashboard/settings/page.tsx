@@ -26,13 +26,15 @@ export default async function SettingsPage() {
       mp_configured,
       processing_fee_mode,
       mp_settlement_option,
+      mp_base_processing_rate,
+      processing_fee_vat_rate,
       effective_processing_rate
     `)
       .eq('owner_id', user.id)
       .single(),
     supabase
       .from('payment_processing_rate_presets')
-      .select('settlement_option, label, suggested_effective_rate')
+      .select('settlement_option, label, suggested_base_rate')
       .eq('active', true)
       .order('sort_order'),
   ])
