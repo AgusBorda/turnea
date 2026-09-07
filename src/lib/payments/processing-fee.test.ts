@@ -4,6 +4,7 @@ import {
   calculateEffectiveProcessingRate,
   calculateProcessingFee,
   effectiveRateFromPercentage,
+  rateFractionToPercentage,
 } from './processing-fee.ts'
 
 test('derives the effective rate from Mercado Pago base rate plus VAT', () => {
@@ -13,6 +14,22 @@ test('derives the effective rate from Mercado Pago base rate plus VAT', () => {
 test('accepts comma and dot percentage input', () => {
   assert.equal(effectiveRateFromPercentage('6,60'), '0.066000')
   assert.equal(effectiveRateFromPercentage('6.60'), '0.066000')
+})
+
+test('formats preset rate fractions as exact parser-compatible percentages', () => {
+  const cases = [
+    ['0.066000', '6.60'],
+    ['0.046000', '4.60'],
+    ['0.035500', '3.55'],
+    ['0.015600', '1.56'],
+  ] as const
+
+  for (const [rate, percentage] of cases) {
+    const result = rateFractionToPercentage(rate)
+    assert.equal(result, percentage)
+    assert.equal(effectiveRateFromPercentage(result), rate)
+    assert.doesNotMatch(result, /000000000000/)
+  }
 })
 
 test('supports zero VAT and zero base rate', () => {

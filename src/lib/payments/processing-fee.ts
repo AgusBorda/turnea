@@ -66,6 +66,19 @@ export function effectiveRateFromPercentage(percentage: string): string {
   return formatRate(percentageUnits)
 }
 
+export function rateFractionToPercentage(rate: string): string {
+  const rateUnits = parseUnsignedDecimal(rate, 6, 'PROCESSING_RATE')
+  if (rateUnits > MAX_EFFECTIVE_RATE_UNITS) {
+    throw new Error('INVALID_PROCESSING_RATE')
+  }
+
+  const whole = rateUnits / BigInt(10_000)
+  const fraction = (rateUnits % BigInt(10_000)).toString().padStart(4, '0')
+  const trimmedFraction = fraction.replace(/0+$/, '').padEnd(2, '0')
+
+  return `${whole}.${trimmedFraction}`
+}
+
 export function calculateEffectiveProcessingRate(
   baseRate: string,
   vatRate: string

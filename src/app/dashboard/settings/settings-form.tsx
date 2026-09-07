@@ -9,6 +9,7 @@ import {
   calculateEffectiveProcessingRate,
   calculateProcessingFee,
   effectiveRateFromPercentage,
+  rateFractionToPercentage,
 } from '@/lib/payments/processing-fee'
 
 const DEFAULT_TIMEZONE = 'America/Argentina/Buenos_Aires'
@@ -78,7 +79,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   const [baseProcessingRatePercent, setBaseProcessingRatePercent] = useState(
     barbershop?.mp_base_processing_rate == null
       ? ''
-      : String(Number(barbershop.mp_base_processing_rate) * 100)
+      : rateFractionToPercentage(String(barbershop.mp_base_processing_rate))
   )
   const [newMpAccessToken, setNewMpAccessToken] = useState('')
   const [advanceBookingDays, setAdvanceBookingDays] = useState(barbershop?.advance_booking_days || 30)
@@ -133,10 +134,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
 
     try {
       const normalizedRate = effectiveRateFromPercentage(baseProcessingRatePercent)
-      setBaseProcessingRatePercent((Number(normalizedRate) * 100).toLocaleString('es-AR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 4,
-      }))
+      setBaseProcessingRatePercent(rateFractionToPercentage(normalizedRate).replace('.', ','))
     } catch {
       // Validation remains visible on submit and in the calculation preview.
     }
@@ -456,7 +454,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
                       setMpSettlementOption(preset.settlement_option)
                       if (preset.suggested_base_rate != null) {
                         setBaseProcessingRatePercent(
-                          String(Number(preset.suggested_base_rate) * 100)
+                          rateFractionToPercentage(String(preset.suggested_base_rate)).replace('.', ',')
                         )
                       }
                     }}
@@ -470,7 +468,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
                     <span className="block text-xs text-[var(--muted)] mt-0.5">
                       {preset.suggested_base_rate == null
                         ? 'Porcentaje definido manualmente'
-                        : `Tasa base sugerida: ${(Number(preset.suggested_base_rate) * 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`}
+                        : `Tasa base sugerida: ${rateFractionToPercentage(String(preset.suggested_base_rate)).replace('.', ',')}%`}
                     </span>
                   </button>
                 )
