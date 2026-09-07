@@ -1,6 +1,68 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { calculateProcessingFee } from './processing-fee.ts'
+import {
+  calculateEffectiveProcessingRate,
+  calculateProcessingFee,
+  effectiveRateFromPercentage,
+  rateFractionToPercentage,
+} from './processing-fee.ts'
+
+test('derives the effective rate from Mercado Pago base rate plus VAT', () => {
+  assert.equal(calculateEffectiveProcessingRate('0.066', '0.21'), '0.079860')
+})
+
+test('accepts comma and dot percentage input', () => {
+  assert.equal(effectiveRateFromPercentage('6,60'), '0.066000')
+  assert.equal(effectiveRateFromPercentage('6.60'), '0.066000')
+})
+
+test('formats preset rate fractions as exact parser-compatible percentages', () => {
+  const cases = [
+    ['0.066000', '6.60'],
+    ['0.046000', '4.60'],
+    ['0.035500', '3.55'],
+    ['0.015600', '1.56'],
+  ] as const
+
+  for (const [rate, percentage] of cases) {
+    const result = rateFractionToPercentage(rate)
+    assert.equal(result, percentage)
+    assert.equal(effectiveRateFromPercentage(result), rate)
+    assert.doesNotMatch(result, /000000000000/)
+  }
+})
+
+test('supports zero VAT and zero base rate', () => {
+  assert.equal(calculateEffectiveProcessingRate('0.066', '0'), '0.066000')
+  assert.equal(calculateEffectiveProcessingRate('0', '0.21'), '0.000000')
+})
+
+test('rejects invalid base and VAT rates', () => {
+  assert.throws(() => calculateEffectiveProcessingRate('-0.01', '0.21'))
+  assert.throws(() => calculateEffectiveProcessingRate('0.10', '1.01'))
+  assert.throws(() => calculateEffectiveProcessingRate('0.15', '0.21'))
+})
+
+test('grosses up deposits using the base rate plus VAT', () => {
+  const effectiveRate = calculateEffectiveProcessingRate('0.066', '0.21')
+  const largeDeposit = calculateProcessingFee({
+    depositAmount: '1500',
+    processingFeeMode: 'customer_covers',
+    effectiveRate,
+    currency: 'ARS',
+  })
+  const smallDeposit = calculateProcessingFee({
+    depositAmount: '15',
+    processingFeeMode: 'customer_covers',
+    effectiveRate,
+    currency: 'ARS',
+  })
+
+  assert.equal(largeDeposit.processingFeeAmount, '130.19')
+  assert.equal(largeDeposit.paymentTotalAmount, '1630.19')
+  assert.equal(smallDeposit.processingFeeAmount, '1.31')
+  assert.equal(smallDeposit.paymentTotalAmount, '16.31')
+})
 
 test('barbershop absorbs the processing cost', () => {
   const result = calculateProcessingFee({

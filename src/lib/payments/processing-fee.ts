@@ -29,7 +29,7 @@ export interface ProcessingFeeResult {
 }
 
 function parseUnsignedDecimal(value: string, scale: number, field: string): bigint {
-  const normalized = value.trim()
+  const normalized = value.trim().replace(',', '.')
   const pattern = new RegExp(`^(?:0|[1-9]\\d*)(?:\\.(\\d{1,${scale}}))?$`)
   const match = normalized.match(pattern)
 
@@ -64,6 +64,40 @@ export function effectiveRateFromPercentage(percentage: string): string {
   }
 
   return formatRate(percentageUnits)
+}
+
+export function rateFractionToPercentage(rate: string): string {
+  const rateUnits = parseUnsignedDecimal(rate, 6, 'PROCESSING_RATE')
+  if (rateUnits > MAX_EFFECTIVE_RATE_UNITS) {
+    throw new Error('INVALID_PROCESSING_RATE')
+  }
+
+  const whole = rateUnits / BigInt(10_000)
+  const fraction = (rateUnits % BigInt(10_000)).toString().padStart(4, '0')
+  const trimmedFraction = fraction.replace(/0+$/, '').padEnd(2, '0')
+
+  return `${whole}.${trimmedFraction}`
+}
+
+export function calculateEffectiveProcessingRate(
+  baseRate: string,
+  vatRate: string
+): string {
+  const baseRateUnits = parseUnsignedDecimal(baseRate, 6, 'BASE_PROCESSING_RATE')
+  const vatRateUnits = parseUnsignedDecimal(vatRate, 6, 'PROCESSING_FEE_VAT_RATE')
+
+  if (baseRateUnits > MAX_EFFECTIVE_RATE_UNITS || vatRateUnits > RATE_SCALE) {
+    throw new Error('INVALID_PROCESSING_RATE_CONFIGURATION')
+  }
+
+  const numerator = baseRateUnits * (RATE_SCALE + vatRateUnits)
+  const effectiveRateUnits = (numerator + RATE_SCALE / BigInt(2)) / RATE_SCALE
+
+  if (effectiveRateUnits > MAX_EFFECTIVE_RATE_UNITS) {
+    throw new Error('INVALID_EFFECTIVE_RATE')
+  }
+
+  return formatRate(effectiveRateUnits)
 }
 
 export function calculateDepositAmount(servicePrice: string, depositPercentage: number): string {

@@ -21,6 +21,8 @@ export interface Barbershop {
   mp_configured: boolean
   processing_fee_mode: ProcessingFeeMode
   mp_settlement_option: MercadoPagoSettlementOption
+  mp_base_processing_rate: number | null
+  processing_fee_vat_rate: number
   effective_processing_rate: number
   active: boolean
   created_at: string
