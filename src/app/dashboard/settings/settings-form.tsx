@@ -3,7 +3,10 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { ExternalLink } from 'lucide-react'
+import { Building2, CalendarDays, Check, CreditCard, ExternalLink, ShieldCheck } from 'lucide-react'
+import Button from '@/components/ui/button'
+import Card from '@/components/ui/card'
+import { inputClassName } from '@/components/ui/input-styles'
 import type { MercadoPagoSettlementOption, ProcessingFeeMode } from '@/lib/types'
 import {
   calculateEffectiveProcessingRate,
@@ -55,6 +58,14 @@ interface Props {
   userId: string
 }
 
+type SettingsSection = 'general' | 'reservations' | 'mercado-pago'
+
+const SETTINGS_SECTIONS = [
+  { id: 'general', label: 'General', icon: Building2 },
+  { id: 'reservations', label: 'Reservas', icon: CalendarDays },
+  { id: 'mercado-pago', label: 'Mercado Pago', icon: CreditCard },
+] as const
+
 export default function SettingsForm({ barbershop, processingRatePresets, userId }: Props) {
   const [name, setName] = useState(barbershop?.name || '')
   const [slug, setSlug] = useState(barbershop?.slug || '')
@@ -86,6 +97,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [activeSection, setActiveSection] = useState<SettingsSection>('general')
   const router = useRouter()
   const selectedProcessingRatePreset = processingRatePresets.find(
     preset => preset.settlement_option === mpSettlementOption
@@ -274,36 +286,118 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     setLoading(false)
   }
 
+  function handleSectionKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex = index
+
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % SETTINGS_SECTIONS.length
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + SETTINGS_SECTIONS.length) % SETTINGS_SECTIONS.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = SETTINGS_SECTIONS.length - 1
+    else return
+
+    event.preventDefault()
+    const nextSection = SETTINGS_SECTIONS[nextIndex]
+    setActiveSection(nextSection.id)
+    document.getElementById(`settings-tab-${nextSection.id}`)?.focus()
+  }
+
   return (
-    <form onSubmit={handleSave} autoComplete="off" className="max-w-xl space-y-6">
-      {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>}
-      {saved && <div className="bg-green-50 text-green-600 text-sm rounded-lg p-3">¡Guardado!</div>}
-
-      <div className="bg-white rounded-xl border border-[var(--border)] p-6 space-y-4">
-        <h2 className="font-semibold">Datos de la barbería</h2>
-
+    <form onSubmit={handleSave} autoComplete="off" className="mx-auto max-w-5xl space-y-5">
+      <header className="flex flex-col gap-4 pb-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <label className="block text-sm font-medium mb-1">Nombre *</label>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Configuración</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--muted)] sm:text-base">
+            Administrá los datos, reservas y cobros de tu barbería.
+          </p>
+        </div>
+        <Button
+          type="submit"
+          disabled={loading || !name.trim() || !slug.trim()}
+          className="w-full shrink-0 sm:w-auto"
+        >
+          {loading ? 'Guardando...' : barbershop ? 'Guardar cambios' : 'Crear barbería'}
+        </Button>
+      </header>
+
+      {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>}
+      {saved && (
+        <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+          <Check className="h-4 w-4" aria-hidden="true" />
+          ¡Guardado!
+        </div>
+      )}
+
+      <div className="space-y-5">
+        <nav
+          aria-label="Secciones de configuración"
+          role="tablist"
+          className="grid grid-cols-3 border-b border-[var(--border)]"
+        >
+          {SETTINGS_SECTIONS.map((section, index) => {
+            const Icon = section.icon
+            const selected = activeSection === section.id
+            return (
+              <button
+                key={section.id}
+                id={`settings-tab-${section.id}`}
+                type="button"
+                onClick={() => setActiveSection(section.id)}
+                onKeyDown={event => handleSectionKeyDown(event, index)}
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`settings-panel-${section.id}`}
+                tabIndex={selected ? 0 : -1}
+                className={`-mb-px flex min-h-11 min-w-0 items-center justify-center gap-1.5 border-b-2 px-1.5 py-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)] sm:gap-2 sm:px-4 sm:text-sm ${
+                  selected
+                    ? 'border-[var(--primary)] text-[var(--primary)]'
+                    : 'border-transparent text-[var(--muted)] hover:border-[var(--border)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden="true" />
+                <span className="truncate">{section.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+
+        <div
+          id={`settings-panel-${activeSection}`}
+          role="tabpanel"
+          aria-labelledby={`settings-tab-${activeSection}`}
+          className="min-w-0"
+        >
+          {activeSection === 'general' && (
+            <Card className="space-y-5">
+              <div>
+                <h2 className="text-lg font-semibold">Información de la barbería</h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">Estos datos identifican tu negocio en Turnea.</p>
+              </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="settings-name" className="mb-1.5 block text-sm font-medium">Nombre *</label>
           <input
+            id="settings-name"
             type="text"
             value={name}
             onChange={e => handleNameChange(e.target.value)}
             required
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+            className={`${inputClassName} w-full`}
             placeholder="Ej: Barbería El Tano"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Slug (URL) *</label>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-[var(--muted)]">turnea.app/</span>
+          <label htmlFor="settings-slug" className="mb-1.5 block text-sm font-medium">Slug (URL) *</label>
+          <div className="flex min-w-0 items-center rounded-lg border border-[var(--border)] bg-white focus-within:border-[var(--primary)] focus-within:ring-2 focus-within:ring-[var(--primary)]/20">
+            <span className="shrink-0 pl-3 text-sm text-[var(--muted)]">turnea.app/</span>
             <input
+              id="settings-slug"
               type="text"
               value={slug}
               onChange={e => setSlug(generateSlug(e.target.value))}
               required
-              className="flex-1 px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+              className="turnea-input min-h-11 min-w-0 flex-1 rounded-r-lg bg-transparent px-1 py-2.5 pr-3 text-sm font-medium focus:outline-none"
               placeholder="barberia-el-tano"
             />
           </div>
@@ -317,65 +411,76 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
             </a>
           )}
         </div>
+        </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Descripción</label>
+          <label htmlFor="settings-description" className="mb-1.5 block text-sm font-medium">Descripción</label>
           <textarea
+            id="settings-description"
             value={description}
             onChange={e => setDescription(e.target.value)}
             rows={2}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] resize-none"
+            className={`${inputClassName} min-h-24 w-full resize-y`}
             placeholder="Breve descripción de tu barbería"
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium mb-1">Dirección</label>
+            <label htmlFor="settings-address" className="mb-1.5 block text-sm font-medium">Dirección</label>
             <input
+              id="settings-address"
               type="text"
               value={address}
               onChange={e => setAddress(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+              className={`${inputClassName} w-full`}
               placeholder="Calle 123, Ciudad"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Teléfono</label>
+            <label htmlFor="settings-phone" className="mb-1.5 block text-sm font-medium">Teléfono</label>
             <input
+              id="settings-phone"
               type="tel"
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+              className={`${inputClassName} w-full`}
               placeholder="1155667788"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Instagram (sin @)</label>
+          <label htmlFor="settings-instagram" className="mb-1.5 block text-sm font-medium">Instagram (sin @)</label>
           <input
+            id="settings-instagram"
             type="text"
             value={instagram}
             onChange={e => setInstagram(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+            className={`${inputClassName} w-full`}
             placeholder="barberia_eltano"
           />
         </div>
-      </div>
+            </Card>
+          )}
 
-      <div className="bg-white rounded-xl border border-[var(--border)] p-6 space-y-4">
-        <h2 className="font-semibold">Configuración de turnos</h2>
+          {activeSection === 'reservations' && (
+            <Card className="space-y-5">
+              <div>
+                <h2 className="text-lg font-semibold">Configuración de reservas</h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">Definí cómo y con cuánta anticipación pueden reservar tus clientes.</p>
+              </div>
 
+        <div className="grid gap-5 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium mb-1" htmlFor="timezone">
+          <label className="mb-1.5 block text-sm font-medium" htmlFor="timezone">
             Zona horaria
           </label>
           <select
             id="timezone"
             value={timezone}
             onChange={e => setTimezone(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] bg-white"
+            className={`${inputClassName} w-full`}
           >
             {!TIMEZONE_OPTIONS.some(option => option.value === timezone) && (
               <option value={timezone}>{timezone} (actual)</option>
@@ -392,18 +497,35 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Duración del slot (minutos)</label>
+          <label htmlFor="slot-duration" className="mb-1.5 block text-sm font-medium">Duración del slot (minutos)</label>
           <input
+            id="slot-duration"
             type="number"
             value={slotDuration}
             onChange={e => setSlotDuration(Number(e.target.value))}
             min={15}
             step={5}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+            className={`${inputClassName} w-full`}
           />
           <p className="text-xs text-[var(--muted)] mt-1">Intervalo entre turnos disponibles.</p>
         </div>
+        <div>
+          <label htmlFor="advance-booking-days" className="mb-1.5 block text-sm font-medium">Días disponibles para reservar</label>
+          <select
+            id="advance-booking-days"
+            value={advanceBookingDays}
+            onChange={e => setAdvanceBookingDays(Number(e.target.value))}
+            className={`${inputClassName} w-full`}
+          >
+            <option value={7}>1 semana</option><option value={14}>2 semanas</option>
+            <option value={21}>3 semanas</option><option value={30}>1 mes</option>
+            <option value={60}>2 meses</option><option value={90}>3 meses</option>
+          </select>
+          <p className="mt-1 text-xs text-[var(--muted)]">Hasta cuántos días hacia adelante pueden reservar tus clientes.</p>
+        </div>
+        </div>
 
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--secondary)]/35 p-4">
         <div className="flex items-center gap-3">
           <input
             type="checkbox"
@@ -415,33 +537,47 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           <label htmlFor="deposit" className="text-sm font-medium">Requerir seña al reservar</label>
         </div>
 
-        {depositRequired && (
-          <div>
-            <label className="block text-sm font-medium mb-1">Porcentaje de seña (%)</label>
+        <div className={`mt-4 border-t border-[var(--border)] pt-4 ${depositRequired ? '' : 'opacity-50'}`}>
+            <label htmlFor="deposit-percentage" className="mb-1.5 block text-sm font-medium">Porcentaje de seña (%)</label>
             <input
+              id="deposit-percentage"
               type="number"
               value={depositPercentage}
               onChange={e => setDepositPercentage(Number(e.target.value))}
               min={10}
               max={100}
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
+              disabled={!depositRequired}
+              className={`${inputClassName} w-full sm:max-w-xs`}
             />
-          </div>
-        )}
-      </div>
+            {!depositRequired && <p className="mt-1 text-xs text-[var(--muted)]">Activá la seña para configurar el porcentaje.</p>}
+        </div>
+        </div>
+            </Card>
+          )}
 
-      {/* Mercado Pago */}
-      <div className="bg-white rounded-xl border border-[var(--border)] p-6 space-y-4">
+          {activeSection === 'mercado-pago' && (
+      <Card className="space-y-5">
         <div>
-          <h2 className="font-semibold">Mercado Pago</h2>
-          <p className="text-xs text-[var(--muted)] mt-0.5">
+          <h2 className="text-lg font-semibold">Mercado Pago</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">
             Conectá tu cuenta para cobrar señas automáticamente.
           </p>
         </div>
 
-        <div className="space-y-4 border-t border-[var(--border)] pt-4">
+        <section className={`flex items-start gap-3 rounded-xl border p-4 ${mpConfigured ? 'border-green-200 bg-green-50/70' : 'border-[var(--border)] bg-[var(--secondary)]/35'}`}>
+          <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${mpConfigured ? 'text-green-700' : 'text-[var(--muted)]'}`} aria-hidden="true" />
           <div>
-            <p className="text-sm font-medium mb-2">¿Cuándo querés recibir tus señas?</p>
+            <h3 className="text-sm font-semibold">Estado de conexión</h3>
+            <p className={`mt-0.5 text-sm ${mpConfigured ? 'text-green-700' : 'text-[var(--muted)]'}`}>
+              {mpConfigured ? 'Mercado Pago configurado y listo para cobrar señas.' : 'Todavía no configuraste una credencial de Mercado Pago.'}
+            </p>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-xl border border-[var(--border)] p-4 sm:p-5">
+          <div>
+            <h3 className="font-semibold">Plazo de acreditación</h3>
+            <p className="mt-1 text-xs text-[var(--muted)]">Elegí cuándo querés recibir tus señas.</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {processingRatePresets.map(preset => {
                 const selected = preset.settlement_option === mpSettlementOption
@@ -458,7 +594,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
                         )
                       }
                     }}
-                    className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                    className={`min-h-16 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 ${
                       selected
                         ? 'border-[var(--primary)] bg-[var(--primary)]/5'
                         : 'border-[var(--border)] hover:border-[var(--primary)]/50'
@@ -480,7 +616,13 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
               </p>
             )}
           </div>
+        </section>
 
+        <section className="space-y-5 rounded-xl border border-[var(--border)] p-4 sm:p-5">
+          <div>
+            <h3 className="font-semibold">Costo de procesamiento</h3>
+            <p className="mt-1 text-xs text-[var(--muted)]">Configurá la tasa informada por Mercado Pago y quién absorbe ese costo.</p>
+          </div>
           <div>
             <label className="block text-sm font-medium mb-1" htmlFor="mp-base-processing-rate">
               Tasa que te muestra Mercado Pago
@@ -496,7 +638,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
                 onChange={event => setBaseProcessingRatePercent(event.target.value)}
                 onBlur={formatBaseRateInput}
                 placeholder={hasLegacyEffectiveOnlyRate ? 'Ingresá la tasa base para actualizar' : '6,60'}
-                className="w-full rounded-lg border border-[var(--border)] px-3 py-2 pr-9 focus:border-[var(--primary)] focus:outline-none"
+                className={`${inputClassName} w-full pr-9`}
               />
               <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-[var(--muted)]">
                 %
@@ -558,9 +700,10 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
               </span>
             </label>
           </fieldset>
+        </section>
 
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--secondary)]/45 p-4">
-            <p className="text-sm font-semibold">Ejemplo de cálculo</p>
+          <section className="rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/[0.035] p-4 sm:p-5">
+            <p className="text-sm font-semibold">Resumen financiero</p>
             <p className="mt-0.5 text-xs text-[var(--muted)]">Para una seña hipotética de $1.500,00</p>
             {processingFeePreview ? (
               <div className="mt-3 space-y-1.5 text-sm">
@@ -585,16 +728,13 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
             <p className="mt-3 text-xs text-[var(--muted)]">
               Esta estimación no reemplaza las condiciones informadas por Mercado Pago.
             </p>
-          </div>
-        </div>
+          </section>
 
-        {mpConfigured && (
-          <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
-            Mercado Pago configurado. Ingresá un token nuevo solamente si querés reemplazar la credencial actual.
+        <section className="rounded-xl border border-[var(--border)] p-4 sm:p-5">
+          <div className="mb-3">
+            <h3 className="font-semibold">Credencial privada</h3>
+            <p className="mt-1 text-xs text-[var(--muted)]">{mpConfigured ? 'Ingresá un token nuevo sólo si querés reemplazar el actual.' : 'Conectá la credencial privada de tu cuenta vendedora.'}</p>
           </div>
-        )}
-
-        <div>
           <label className="block text-sm font-medium mb-1" htmlFor="mp-access-token">
             {mpConfigured ? 'Nuevo Access Token (opcional)' : 'Access Token'}
           </label>
@@ -604,7 +744,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
             type="password"
             value={newMpAccessToken}
             onChange={e => setNewMpAccessToken(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] font-mono text-sm"
+            className={`${inputClassName} w-full font-mono`}
             placeholder={mpConfigured ? 'Dejar vacío para conservar la credencial actual' : 'APP_USR-xxxx... o TEST-xxxx...'}
             autoComplete="new-password"
           />
@@ -629,37 +769,11 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
                 : '⚠️ Formato no reconocido'}
             </p>
           )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Días disponibles para reservar
-          </label>
-          <select
-            value={advanceBookingDays}
-            onChange={e => setAdvanceBookingDays(Number(e.target.value))}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)]"
-          >
-            <option value={7}>1 semana</option>
-            <option value={14}>2 semanas</option>
-            <option value={21}>3 semanas</option>
-            <option value={30}>1 mes</option>
-            <option value={60}>2 meses</option>
-            <option value={90}>3 meses</option>
-          </select>
-          <p className="text-xs text-[var(--muted)] mt-1">
-            Hasta cuántos días hacia adelante pueden reservar tus clientes.
-          </p>
+        </section>
+      </Card>
+          )}
         </div>
       </div>
-
-      <button
-        type="submit"
-        disabled={loading || !name.trim() || !slug.trim()}
-        className="w-full py-3 bg-[var(--primary)] text-white font-semibold rounded-lg hover:bg-[var(--primary-dark)] transition-colors disabled:opacity-50"
-      >
-        {loading ? 'Guardando...' : barbershop ? 'Guardar cambios' : 'Crear barbería'}
-      </button>
     </form>
   )
 }
