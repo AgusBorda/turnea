@@ -7,7 +7,9 @@ import { Building2, CalendarDays, Check, CreditCard, ExternalLink, ShieldCheck }
 import Button from '@/components/ui/button'
 import Card from '@/components/ui/card'
 import { inputClassName } from '@/components/ui/input-styles'
+import TurneaSelect from '@/components/ui/select'
 import type { MercadoPagoSettlementOption, ProcessingFeeMode } from '@/lib/types'
+import { createSettingsSnapshot, settingsSnapshotsEqual } from '@/lib/settings-dirty-state'
 import {
   calculateEffectiveProcessingRate,
   calculateProcessingFee,
@@ -66,6 +68,15 @@ const SETTINGS_SECTIONS = [
   { id: 'mercado-pago', label: 'Mercado Pago', icon: CreditCard },
 ] as const
 
+const ADVANCE_BOOKING_OPTIONS = [
+  { id: '7', label: '1 semana' },
+  { id: '14', label: '2 semanas' },
+  { id: '21', label: '3 semanas' },
+  { id: '30', label: '1 mes' },
+  { id: '60', label: '2 meses' },
+  { id: '90', label: '3 meses' },
+]
+
 export default function SettingsForm({ barbershop, processingRatePresets, userId }: Props) {
   const [name, setName] = useState(barbershop?.name || '')
   const [slug, setSlug] = useState(barbershop?.slug || '')
@@ -98,7 +109,48 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [activeSection, setActiveSection] = useState<SettingsSection>('general')
+  const [persistedSnapshot, setPersistedSnapshot] = useState(() => createSettingsSnapshot({
+    name,
+    slug,
+    description,
+    address,
+    phone,
+    instagram,
+    timezone,
+    slotDuration,
+    advanceBookingDays,
+    depositRequired,
+    depositPercentage,
+    processingFeeMode,
+    mpSettlementOption,
+    baseProcessingRatePercent,
+    newMpAccessToken: '',
+  }))
   const router = useRouter()
+  const currentSnapshot = createSettingsSnapshot({
+    name,
+    slug,
+    description,
+    address,
+    phone,
+    instagram,
+    timezone,
+    slotDuration,
+    advanceBookingDays,
+    depositRequired,
+    depositPercentage,
+    processingFeeMode,
+    mpSettlementOption,
+    baseProcessingRatePercent,
+    newMpAccessToken,
+  })
+  const isDirty = !settingsSnapshotsEqual(currentSnapshot, persistedSnapshot)
+  const timezoneSelectOptions = [
+    ...(!TIMEZONE_OPTIONS.some(option => option.value === timezone)
+      ? [{ id: timezone, label: `${timezone} (actual)` }]
+      : []),
+    ...TIMEZONE_OPTIONS.map(option => ({ id: option.value, label: option.label })),
+  ]
   const selectedProcessingRatePreset = processingRatePresets.find(
     preset => preset.settlement_option === mpSettlementOption
   )
@@ -181,6 +233,16 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     }
   }
 
+  function markCurrentSettingsPersisted() {
+    setPersistedSnapshot({
+      ...currentSnapshot,
+      hasNewMpAccessToken: false,
+    })
+    setNewMpAccessToken('')
+    setSaved(true)
+    router.refresh()
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim() || !slug.trim()) return
@@ -244,10 +306,8 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           if (accessToken) {
             await saveMercadoPagoCredential(barbershop.id, accessToken)
             setMpConfigured(true)
-            setNewMpAccessToken('')
           }
-          setSaved(true)
-          router.refresh()
+          markCurrentSettingsPersisted()
         } catch (credentialError) {
           setError(credentialError instanceof Error ? credentialError.message : 'No se pudo guardar la credencial de Mercado Pago.')
         }
@@ -272,10 +332,8 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           if (accessToken) {
             await saveMercadoPagoCredential(createdBarbershop.id, accessToken)
             setMpConfigured(true)
-            setNewMpAccessToken('')
           }
-          setSaved(true)
-          router.refresh()
+          markCurrentSettingsPersisted()
         } catch (credentialError) {
           setError(credentialError instanceof Error ? credentialError.message : 'La barbería se creó, pero no se pudo guardar la credencial de Mercado Pago.')
           router.refresh()
@@ -312,7 +370,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
         </div>
         <Button
           type="submit"
-          disabled={loading || !name.trim() || !slug.trim()}
+          disabled={loading || !isDirty || !name.trim() || !slug.trim()}
           className="w-full shrink-0 sm:w-auto"
         >
           {loading ? 'Guardando...' : barbershop ? 'Guardar cambios' : 'Crear barbería'}
@@ -320,7 +378,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
       </header>
 
       {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>}
-      {saved && (
+      {saved && !isDirty && (
         <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
           <Check className="h-4 w-4" aria-hidden="true" />
           ¡Guardado!
@@ -476,21 +534,13 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           <label className="mb-1.5 block text-sm font-medium" htmlFor="timezone">
             Zona horaria
           </label>
-          <select
+          <TurneaSelect
             id="timezone"
             value={timezone}
-            onChange={e => setTimezone(e.target.value)}
-            className={`${inputClassName} w-full`}
-          >
-            {!TIMEZONE_OPTIONS.some(option => option.value === timezone) && (
-              <option value={timezone}>{timezone} (actual)</option>
-            )}
-            {TIMEZONE_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onChange={setTimezone}
+            options={timezoneSelectOptions}
+            ariaLabel="Zona horaria"
+          />
           <p className="text-xs text-[var(--muted)] mt-1">
             Se usa para calcular el día y los horarios disponibles de la barbería.
           </p>
@@ -511,16 +561,13 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
         </div>
         <div>
           <label htmlFor="advance-booking-days" className="mb-1.5 block text-sm font-medium">Días disponibles para reservar</label>
-          <select
+          <TurneaSelect
             id="advance-booking-days"
-            value={advanceBookingDays}
-            onChange={e => setAdvanceBookingDays(Number(e.target.value))}
-            className={`${inputClassName} w-full`}
-          >
-            <option value={7}>1 semana</option><option value={14}>2 semanas</option>
-            <option value={21}>3 semanas</option><option value={30}>1 mes</option>
-            <option value={60}>2 meses</option><option value={90}>3 meses</option>
-          </select>
+            value={String(advanceBookingDays)}
+            onChange={value => setAdvanceBookingDays(Number(value))}
+            options={ADVANCE_BOOKING_OPTIONS}
+            ariaLabel="Días disponibles para reservar"
+          />
           <p className="mt-1 text-xs text-[var(--muted)]">Hasta cuántos días hacia adelante pueden reservar tus clientes.</p>
         </div>
         </div>
