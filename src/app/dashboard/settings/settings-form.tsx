@@ -275,7 +275,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   }
 
   return (
-    <form onSubmit={handleSave} className="max-w-xl space-y-6">
+    <form onSubmit={handleSave} autoComplete="off" className="max-w-xl space-y-6">
       {error && <div className="bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>}
       {saved && <div className="bg-green-50 text-green-600 text-sm rounded-lg p-3">¡Guardado!</div>}
 
@@ -482,14 +482,16 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="base-processing-rate">
+            <label className="block text-sm font-medium mb-1" htmlFor="mp-base-processing-rate">
               Tasa que te muestra Mercado Pago
             </label>
             <div className="relative">
               <input
-                id="base-processing-rate"
+                id="mp-base-processing-rate"
+                name="mp-base-processing-rate"
                 type="text"
                 inputMode="decimal"
+                autoComplete="off"
                 value={baseProcessingRatePercent}
                 onChange={event => setBaseProcessingRatePercent(event.target.value)}
                 onBlur={formatBaseRateInput}
@@ -593,16 +595,18 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">
+          <label className="block text-sm font-medium mb-1" htmlFor="mp-access-token">
             {mpConfigured ? 'Nuevo Access Token (opcional)' : 'Access Token'}
           </label>
           <input
+            id="mp-access-token"
+            name="mp-access-token"
             type="password"
             value={newMpAccessToken}
             onChange={e => setNewMpAccessToken(e.target.value)}
             className="w-full px-3 py-2 rounded-lg border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] font-mono text-sm"
             placeholder={mpConfigured ? 'Dejar vacío para conservar la credencial actual' : 'APP_USR-xxxx... o TEST-xxxx...'}
-            autoComplete="off"
+            autoComplete="new-password"
           />
           <p className="text-xs text-[var(--muted)] mt-1">
             Encontralo en{' '}
