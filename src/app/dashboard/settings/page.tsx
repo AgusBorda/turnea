@@ -40,13 +40,10 @@ export default async function SettingsPage() {
   ])
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Configuración</h1>
-      <SettingsForm
-        barbershop={barbershop}
-        processingRatePresets={processingRatePresets ?? []}
-        userId={user.id}
-      />
-    </div>
+    <SettingsForm
+      barbershop={barbershop}
+      processingRatePresets={processingRatePresets ?? []}
+      userId={user.id}
+    />
   )
 }
