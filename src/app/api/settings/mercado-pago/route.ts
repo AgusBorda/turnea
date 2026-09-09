@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { createAdminClient } from '@/lib/supabase/admin'
+import { storeManualMercadoPagoCredential } from '@/lib/mercado-pago/credentials'
 import { createClient } from '@/lib/supabase/server'
 
 interface CredentialRequest {
@@ -46,25 +46,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No tenés permiso para modificar esta barbería.' }, { status: 403 })
   }
 
-  const admin = createAdminClient()
-  const { error: credentialError } = await admin
-    .from('barbershop_payment_credentials')
-    .upsert(
-      { barbershop_id: barbershopId, mp_access_token: accessToken },
-      { onConflict: 'barbershop_id' }
-    )
-
-  if (credentialError) {
+  try {
+    await storeManualMercadoPagoCredential(barbershopId, accessToken)
+  } catch {
     return NextResponse.json({ error: 'No se pudo guardar la credencial de Mercado Pago.' }, { status: 500 })
-  }
-
-  const { error: configuredError } = await admin
-    .from('barbershops')
-    .update({ mp_configured: true })
-    .eq('id', barbershopId)
-
-  if (configuredError) {
-    return NextResponse.json({ error: 'La credencial se guardó, pero no se pudo actualizar su estado.' }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true })

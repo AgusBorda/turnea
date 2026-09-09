@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { isLocalSlotInPast } from '@/lib/datetime'
+import {
+  getValidMercadoPagoAccessToken,
+  MercadoPagoCredentialError,
+} from '@/lib/mercado-pago/credentials'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -212,17 +216,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'El servicio de pagos no está disponible' }, { status: 500 })
   }
 
-  const { data: credential, error: credentialError } = await admin
-    .from('barbershop_payment_credentials')
-    .select('mp_access_token')
-    .eq('barbershop_id', barbershopId)
-    .maybeSingle()
-
-  if (credentialError) {
-    return NextResponse.json({ error: 'No se pudo validar la configuración de Mercado Pago' }, { status: 500 })
-  }
-
-  if (!credential?.mp_access_token?.trim()) {
+  let accessToken: string
+  try {
+    accessToken = await getValidMercadoPagoAccessToken(barbershopId)
+  } catch (error) {
+    if (
+      error instanceof MercadoPagoCredentialError
+      && error.code === 'MERCADO_PAGO_CREDENTIAL_UNAVAILABLE'
+    ) {
+      return NextResponse.json({ error: 'No se pudo validar la configuración de Mercado Pago' }, { status: 500 })
+    }
     return NextResponse.json({ error: 'Mercado Pago figura configurado pero no tiene una credencial disponible' }, { status: 503 })
   }
 
@@ -356,7 +359,7 @@ export async function POST(req: NextRequest) {
     mercadoPagoResponse = await fetch('https://api.mercadopago.com/checkout/preferences', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${credential.mp_access_token}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(preferenceBody),

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  getValidMercadoPagoAccessToken,
+  MercadoPagoCredentialError,
+} from '@/lib/mercado-pago/credentials'
+import {
   moneyAmountAsNumber,
   paymentAmountAndCurrencyMatch,
   validateMercadoPagoWebhookSignature,
@@ -132,18 +136,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Servicio no disponible' }, { status: 500 })
   }
 
-  const { data: credential, error: credentialError } = await admin
-    .from('barbershop_payment_credentials')
-    .select('mp_access_token')
-    .eq('barbershop_id', barbershopId)
-    .maybeSingle()
-
-  if (credentialError) {
-    return NextResponse.json({ error: 'No se pudo validar la configuración' }, { status: 500 })
-  }
-
-  const accessToken = credential?.mp_access_token?.trim()
-  if (!accessToken) {
+  let accessToken: string
+  try {
+    accessToken = await getValidMercadoPagoAccessToken(barbershopId)
+  } catch (error) {
+    if (
+      error instanceof MercadoPagoCredentialError
+      && error.code === 'MERCADO_PAGO_CREDENTIAL_UNAVAILABLE'
+    ) {
+      return NextResponse.json({ error: 'No se pudo validar la configuración' }, { status: 500 })
+    }
     return NextResponse.json({ error: 'Configuración no disponible' }, { status: 503 })
   }
 

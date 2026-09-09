@@ -9,6 +9,7 @@ import {
   getMercadoPagoRefunds,
   type MercadoPagoRefund,
 } from '@/lib/mercado-pago/refunds'
+import { getValidMercadoPagoAccessToken } from '@/lib/mercado-pago/credentials'
 import { getRefundErrorMessage, isRefundErrorRetryable } from '@/lib/reconciliations'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -227,11 +228,9 @@ async function processRefundClaim(
   }
 
   const [credentialResult, appointmentResult] = await Promise.all([
-    admin
-      .from('barbershop_payment_credentials')
-      .select('mp_access_token')
-      .eq('barbershop_id', claim.barbershop_id)
-      .maybeSingle(),
+    getValidMercadoPagoAccessToken(claim.barbershop_id)
+      .then(accessToken => ({ accessToken, error: false }))
+      .catch(() => ({ accessToken: null, error: true })),
     admin
       .from('appointments')
       .select('id, barbershop_id, deposit_amount, mp_preference_id')
@@ -240,7 +239,7 @@ async function processRefundClaim(
       .maybeSingle(),
   ])
 
-  const accessToken = credentialResult.data?.mp_access_token?.trim()
+  const accessToken = credentialResult.accessToken
   if (credentialResult.error || !accessToken) {
     return failRefund('credential_error')
   }
