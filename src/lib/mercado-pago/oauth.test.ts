@@ -13,6 +13,7 @@ import {
   MercadoPagoOAuthConfigError,
   oauthFailureReasonFromProvider,
   parseMercadoPagoOAuthToken,
+  requestHasSameOrigin,
 } from './oauth.ts'
 
 const config = {
@@ -142,4 +143,16 @@ test('maps provider errors and builds only fixed safe redirects', () => {
   assert.equal(redirect.pathname, '/dashboard/settings')
   assert.equal(redirect.search, '?tab=mercado-pago&mp=oauth_error&reason=invalid_state')
   assert.equal(redirect.toString().includes(config.clientSecret), false)
+})
+
+test('accepts only matching request Origin and Host', () => {
+  assert.equal(requestHasSameOrigin(new Headers({
+    origin: 'https://preview.turnea.test',
+    host: 'preview.turnea.test',
+  })), true)
+  assert.equal(requestHasSameOrigin(new Headers({
+    origin: 'https://attacker.test',
+    host: 'preview.turnea.test',
+  })), false)
+  assert.equal(requestHasSameOrigin(new Headers({ host: 'preview.turnea.test' })), false)
 })

@@ -119,6 +119,19 @@ export function requestMatchesConfiguredOrigin(
   }
 }
 
+export function requestHasSameOrigin(headers: Headers) {
+  const origin = headers.get('origin')
+  const forwardedHost = headers.get('x-forwarded-host')
+  const host = forwardedHost?.split(',')[0]?.trim() || headers.get('host')
+  if (!origin || !host) return false
+
+  try {
+    return new URL(origin).host.toLowerCase() === host.toLowerCase()
+  } catch {
+    return false
+  }
+}
+
 function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }

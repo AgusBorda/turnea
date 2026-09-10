@@ -1,15 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Building2, CalendarDays, Check, CreditCard, ExternalLink, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Building2, CalendarDays, Check, CreditCard, ExternalLink, Link2, ShieldCheck, Unlink, X } from 'lucide-react'
+import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components'
 import Button from '@/components/ui/button'
 import Card from '@/components/ui/card'
 import { inputClassName } from '@/components/ui/input-styles'
 import TurneaSelect from '@/components/ui/select'
+import { ToastViewport, useToast } from '@/components/ui/toast'
 import type { MercadoPagoSettlementOption, ProcessingFeeMode } from '@/lib/types'
 import { createSettingsSnapshot, settingsSnapshotsEqual } from '@/lib/settings-dirty-state'
+import {
+  getMercadoPagoConnectionUiState,
+  type MercadoPagoConnectionSummary,
+  type MercadoPagoOAuthResult,
+  type SettingsSection,
+} from '@/lib/mercado-pago/connection-state'
 import {
   calculateEffectiveProcessingRate,
   calculateProcessingFee,
@@ -58,9 +66,10 @@ interface Props {
   barbershop: SettingsBarbershop | null
   processingRatePresets: ProcessingRatePreset[]
   userId: string
+  initialSection: SettingsSection
+  initialOAuthResult: MercadoPagoOAuthResult
+  initialConnectionSummary: MercadoPagoConnectionSummary
 }
-
-type SettingsSection = 'general' | 'reservations' | 'mercado-pago'
 
 const SETTINGS_SECTIONS = [
   { id: 'general', label: 'General', icon: Building2 },
@@ -77,7 +86,14 @@ const ADVANCE_BOOKING_OPTIONS = [
   { id: '90', label: '3 meses' },
 ]
 
-export default function SettingsForm({ barbershop, processingRatePresets, userId }: Props) {
+export default function SettingsForm({
+  barbershop,
+  processingRatePresets,
+  userId,
+  initialSection,
+  initialOAuthResult,
+  initialConnectionSummary,
+}: Props) {
   const [name, setName] = useState(barbershop?.name || '')
   const [slug, setSlug] = useState(barbershop?.slug || '')
   const [description, setDescription] = useState(barbershop?.description || '')
@@ -108,7 +124,12 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const [activeSection, setActiveSection] = useState<SettingsSection>('general')
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection)
+  const [connectionSummary, setConnectionSummary] = useState(initialConnectionSummary)
+  const [oauthLoading, setOauthLoading] = useState(false)
+  const [oauthActionError, setOauthActionError] = useState('')
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
   const [persistedSnapshot, setPersistedSnapshot] = useState(() => createSettingsSnapshot({
     name,
     slug,
@@ -127,6 +148,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     newMpAccessToken: '',
   }))
   const router = useRouter()
+  const { toasts, showToast, dismissToast } = useToast()
   const currentSnapshot = createSettingsSnapshot({
     name,
     slug,
@@ -145,6 +167,13 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     newMpAccessToken,
   })
   const isDirty = !settingsSnapshotsEqual(currentSnapshot, persistedSnapshot)
+  const connectionUiState = getMercadoPagoConnectionUiState(connectionSummary)
+
+  useEffect(() => {
+    if (!initialOAuthResult) return
+    showToast(initialOAuthResult)
+    router.replace('/dashboard/settings?tab=mercado-pago', { scroll: false })
+  }, [initialOAuthResult, router, showToast])
   const timezoneSelectOptions = [
     ...(!TIMEZONE_OPTIONS.some(option => option.value === timezone)
       ? [{ id: timezone, label: `${timezone} (actual)` }]
@@ -233,6 +262,89 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
     }
   }
 
+  function markManualCredentialConnected() {
+    setMpConfigured(true)
+    setConnectionSummary({
+      configured: true,
+      source: 'manual',
+      status: 'connected',
+      mpUserId: null,
+      expiresAt: null,
+      connectedAt: null,
+    })
+  }
+
+  async function handleConnectMercadoPago() {
+    if (!barbershop || oauthLoading) return
+    if (isDirty) {
+      setOauthActionError('Tenés cambios sin guardar. Guardalos o descartalos antes de conectar Mercado Pago.')
+      return
+    }
+
+    setOauthLoading(true)
+    setOauthActionError('')
+    try {
+      const response = await fetch('/api/mercado-pago/oauth/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barbershopId: barbershop.id }),
+      })
+      const result = await response.json() as { authorizationUrl?: unknown; error?: unknown }
+      if (!response.ok || typeof result.authorizationUrl !== 'string') {
+        throw new Error(typeof result.error === 'string' ? result.error : 'No se pudo iniciar la conexión.')
+      }
+
+      const authorizationUrl = new URL(result.authorizationUrl)
+      if (authorizationUrl.origin !== 'https://auth.mercadopago.com') {
+        throw new Error('La dirección de autorización recibida no es válida.')
+      }
+      window.location.assign(authorizationUrl.toString())
+    } catch (connectError) {
+      setOauthActionError(
+        connectError instanceof Error
+          ? connectError.message
+          : 'No se pudo iniciar la conexión con Mercado Pago.'
+      )
+      setOauthLoading(false)
+    }
+  }
+
+  async function handleDisconnectMercadoPago() {
+    if (!barbershop || disconnecting) return
+    setDisconnecting(true)
+    setOauthActionError('')
+    try {
+      const response = await fetch('/api/mercado-pago/oauth/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barbershopId: barbershop.id }),
+      })
+      const result = await response.json() as { error?: unknown }
+      if (!response.ok) {
+        throw new Error(typeof result.error === 'string' ? result.error : 'No se pudo desconectar Mercado Pago.')
+      }
+
+      setConnectionSummary(current => ({
+        ...current,
+        configured: false,
+        status: 'disconnected',
+        expiresAt: null,
+      }))
+      setMpConfigured(false)
+      setDisconnectDialogOpen(false)
+      showToast({ message: 'Mercado Pago se desconectó correctamente.', tone: 'success' })
+      router.refresh()
+    } catch (disconnectError) {
+      setOauthActionError(
+        disconnectError instanceof Error
+          ? disconnectError.message
+          : 'No se pudo desconectar Mercado Pago.'
+      )
+    } finally {
+      setDisconnecting(false)
+    }
+  }
+
   function markCurrentSettingsPersisted() {
     setPersistedSnapshot({
       ...currentSnapshot,
@@ -305,7 +417,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
         try {
           if (accessToken) {
             await saveMercadoPagoCredential(barbershop.id, accessToken)
-            setMpConfigured(true)
+            markManualCredentialConnected()
           }
           markCurrentSettingsPersisted()
         } catch (credentialError) {
@@ -331,7 +443,7 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
         try {
           if (accessToken) {
             await saveMercadoPagoCredential(createdBarbershop.id, accessToken)
-            setMpConfigured(true)
+            markManualCredentialConnected()
           }
           markCurrentSettingsPersisted()
         } catch (credentialError) {
@@ -611,13 +723,77 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
           </p>
         </div>
 
-        <section className={`flex items-start gap-3 rounded-xl border p-4 ${mpConfigured ? 'border-green-200 bg-green-50/70' : 'border-[var(--border)] bg-[var(--secondary)]/35'}`}>
-          <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${mpConfigured ? 'text-green-700' : 'text-[var(--muted)]'}`} aria-hidden="true" />
-          <div>
-            <h3 className="text-sm font-semibold">Estado de conexión</h3>
-            <p className={`mt-0.5 text-sm ${mpConfigured ? 'text-green-700' : 'text-[var(--muted)]'}`}>
-              {mpConfigured ? 'Mercado Pago configurado y listo para cobrar señas.' : 'Todavía no configuraste una credencial de Mercado Pago.'}
-            </p>
+        <section className={`rounded-xl border p-4 sm:p-5 ${
+          connectionUiState === 'oauth_connected'
+            ? 'border-green-200 bg-green-50/70'
+            : connectionUiState === 'reauth_required'
+              ? 'border-amber-200 bg-amber-50/70'
+              : 'border-[var(--border)] bg-[var(--secondary)]/35'
+        }`}>
+          <div className="flex items-start gap-3">
+            {connectionUiState === 'reauth_required' ? (
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+            ) : connectionUiState === 'oauth_connected' ? (
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-green-700" aria-hidden="true" />
+            ) : (
+              <Link2 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--muted)]" aria-hidden="true" />
+            )}
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-semibold">
+                {connectionUiState === 'oauth_connected' && 'Mercado Pago conectado'}
+                {connectionUiState === 'manual_legacy' && 'Mercado Pago configurado manualmente'}
+                {connectionUiState === 'reauth_required' && 'Necesitamos volver a conectar Mercado Pago'}
+                {connectionUiState === 'not_connected' && 'Conectá Mercado Pago'}
+              </h3>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                {connectionUiState === 'oauth_connected' && 'Tu cuenta está vinculada correctamente.'}
+                {connectionUiState === 'manual_legacy' && 'Esta barbería usa una credencial manual. Podés migrarla a una conexión automática.'}
+                {connectionUiState === 'reauth_required' && 'La conexión actual no puede usarse para nuevos cobros hasta que vuelvas a autorizarla.'}
+                {connectionUiState === 'not_connected' && 'Conectá tu cuenta para recibir señas automáticamente.'}
+              </p>
+              {connectionUiState === 'oauth_connected' && (
+                <dl className="mt-3 space-y-1 text-xs text-[var(--muted)]">
+                  {connectionSummary.mpUserId && (
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt>Cuenta vendedora</dt>
+                      <dd className="font-medium text-[var(--foreground)]">{connectionSummary.mpUserId}</dd>
+                    </div>
+                  )}
+                  {connectionSummary.connectedAt && (
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt>Conectada</dt>
+                      <dd className="font-medium text-[var(--foreground)]">
+                        {new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(connectionSummary.connectedAt))}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              )}
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                {connectionUiState === 'oauth_connected' ? (
+                  <Button type="button" variant="secondary" onClick={() => setDisconnectDialogOpen(true)}>
+                    <Unlink className="h-4 w-4" aria-hidden="true" />
+                    Desconectar
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => void handleConnectMercadoPago()}
+                    disabled={!barbershop || oauthLoading}
+                  >
+                    <Link2 className="h-4 w-4" aria-hidden="true" />
+                    {oauthLoading
+                      ? 'Conectando…'
+                      : connectionUiState === 'reauth_required'
+                        ? 'Reconectar Mercado Pago'
+                        : 'Conectar Mercado Pago'}
+                  </Button>
+                )}
+              </div>
+              {oauthActionError && (
+                <p role="alert" className="mt-3 text-sm text-red-700">{oauthActionError}</p>
+              )}
+            </div>
           </div>
         </section>
 
@@ -777,50 +953,110 @@ export default function SettingsForm({ barbershop, processingRatePresets, userId
             </p>
           </section>
 
-        <section className="rounded-xl border border-[var(--border)] p-4 sm:p-5">
-          <div className="mb-3">
-            <h3 className="font-semibold">Credencial privada</h3>
-            <p className="mt-1 text-xs text-[var(--muted)]">{mpConfigured ? 'Ingresá un token nuevo sólo si querés reemplazar el actual.' : 'Conectá la credencial privada de tu cuenta vendedora.'}</p>
-          </div>
-          <label className="block text-sm font-medium mb-1" htmlFor="mp-access-token">
-            {mpConfigured ? 'Nuevo Access Token (opcional)' : 'Access Token'}
-          </label>
-          <input
-            id="mp-access-token"
-            name="mp-access-token"
-            type="password"
-            value={newMpAccessToken}
-            onChange={e => setNewMpAccessToken(e.target.value)}
-            className={`${inputClassName} w-full font-mono`}
-            placeholder={mpConfigured ? 'Dejar vacío para conservar la credencial actual' : 'APP_USR-xxxx... o TEST-xxxx...'}
-            autoComplete="new-password"
-          />
-          <p className="text-xs text-[var(--muted)] mt-1">
-            Encontralo en{' '}
-            <a
-              href="https://www.mercadopago.com.ar/settings/account/credentials"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--primary)] hover:underline"
-            >
-              mercadopago.com.ar → Credenciales
-            </a>
-            {' '}→ &quot;Credenciales de producción&quot;.
-          </p>
-          {newMpAccessToken && (
-            <p className="text-xs mt-1">
-              {newMpAccessToken.startsWith('TEST-')
-                ? '🟡 Modo prueba (TEST) — los pagos son simulados'
-                : newMpAccessToken.startsWith('APP_USR-')
-                ? '🟢 Modo producción — se cobran pagos reales'
-                : '⚠️ Formato no reconocido'}
+        <details className="group rounded-xl border border-[var(--border)] p-4 sm:p-5">
+          <summary className="cursor-pointer text-sm font-semibold marker:text-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2">
+            Configuración manual avanzada
+          </summary>
+          <div className="mt-4 border-t border-[var(--border)] pt-4">
+            <p className="mb-3 text-xs text-[var(--muted)]">
+              Usá esta opción sólo si no podés conectar Mercado Pago automáticamente. Guardar un token manual reemplazará una conexión OAuth activa.
             </p>
-          )}
-        </section>
+            <label className="mb-1 block text-sm font-medium" htmlFor="mp-access-token">
+              {mpConfigured ? 'Nuevo Access Token (opcional)' : 'Access Token'}
+            </label>
+            <input
+              id="mp-access-token"
+              name="mp-access-token"
+              type="password"
+              value={newMpAccessToken}
+              onChange={e => setNewMpAccessToken(e.target.value)}
+              className={`${inputClassName} w-full font-mono`}
+              placeholder={mpConfigured ? 'Dejar vacío para conservar la credencial actual' : 'APP_USR-xxxx... o TEST-xxxx...'}
+              autoComplete="new-password"
+            />
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Encontralo en{' '}
+              <a
+                href="https://www.mercadopago.com.ar/settings/account/credentials"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--primary)] hover:underline"
+              >
+                mercadopago.com.ar → Credenciales
+              </a>
+              {' '}→ &quot;Credenciales de producción&quot;.
+            </p>
+            {newMpAccessToken && (
+              <p className="mt-1 text-xs">
+                {newMpAccessToken.startsWith('TEST-')
+                  ? '🟡 Modo prueba (TEST) — los pagos son simulados'
+                  : newMpAccessToken.startsWith('APP_USR-')
+                  ? '🟢 Modo producción — se cobran pagos reales'
+                  : '⚠️ Formato no reconocido'}
+              </p>
+            )}
+          </div>
+        </details>
       </Card>
           )}
         </div>
       </div>
+
+      <ModalOverlay
+        isOpen={disconnectDialogOpen}
+        isDismissable={!disconnecting}
+        onOpenChange={setDisconnectDialogOpen}
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-3 backdrop-blur-[1px] sm:p-4"
+      >
+        <Modal className="relative z-10 flex max-h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl outline-none sm:max-h-[90dvh]">
+          <Dialog className="flex min-h-0 flex-1 flex-col outline-none">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-4 py-4 sm:px-6">
+              <Heading slot="title" className="min-w-0 text-lg font-bold text-[var(--foreground)]">
+                Desconectar Mercado Pago
+              </Heading>
+              <button
+                type="button"
+                onClick={() => setDisconnectDialogOpen(false)}
+                disabled={disconnecting}
+                aria-label="Cerrar confirmación de desconexión"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--muted)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:opacity-50"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+              <p slot="description" className="text-sm text-[var(--muted)]">
+                Turnea dejará de poder crear nuevos cobros para esta barbería. Tus turnos y pagos históricos no se eliminarán.
+              </p>
+            </div>
+            <div
+              className="flex flex-col-reverse gap-3 border-t border-[var(--border)] bg-white px-4 pt-4 sm:flex-row sm:justify-end sm:px-6"
+              style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+            >
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setDisconnectDialogOpen(false)}
+                disabled={disconnecting}
+                autoFocus
+                className="w-full sm:w-auto"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => void handleDisconnectMercadoPago()}
+                disabled={disconnecting}
+                className="w-full sm:min-w-36 sm:w-auto"
+              >
+                {disconnecting ? 'Desconectando…' : 'Desconectar'}
+              </Button>
+            </div>
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </form>
   )
 }
