@@ -5,6 +5,7 @@ export type MercadoPagoCredentialErrorCode =
   | 'MERCADO_PAGO_NOT_CONNECTED'
   | 'MERCADO_PAGO_REAUTH_REQUIRED'
   | 'MERCADO_PAGO_TOKEN_REFRESH_REQUIRED'
+  | 'MERCADO_PAGO_REFRESH_TRANSIENT_FAILURE'
 
 export interface MercadoPagoCredentialRow {
   mp_access_token: unknown
