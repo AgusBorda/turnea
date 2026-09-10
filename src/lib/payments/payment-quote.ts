@@ -13,6 +13,7 @@ export interface PaymentQuoteRequest {
 
 export interface PaymentQuote {
   depositRequired: boolean
+  paymentAvailable: boolean
   depositAmount: number
   processingFeeMode: ProcessingFeeMode
   processingFeeAmount: number
@@ -26,7 +27,7 @@ interface PaymentQuoteBarbershop {
   currency: string
   depositRequired: boolean
   depositPercentage: number
-  mpConfigured: boolean
+  paymentAvailable: boolean
   processingFeeMode: ProcessingFeeMode
   effectiveProcessingRate: string
 }
@@ -84,8 +85,7 @@ export function buildPaymentQuote(input: BuildPaymentQuoteInput): PaymentQuote {
   }
 
   try {
-    const paymentEnabled = barbershop.depositRequired && barbershop.mpConfigured
-    const depositAmount = paymentEnabled
+    const depositAmount = barbershop.depositRequired
       ? calculateDepositAmount(service.price, barbershop.depositPercentage)
       : '0.00'
     const calculation = calculateProcessingFee({
@@ -94,10 +94,11 @@ export function buildPaymentQuote(input: BuildPaymentQuoteInput): PaymentQuote {
       effectiveRate: barbershop.effectiveProcessingRate,
       currency: barbershop.currency,
     })
-    const depositRequired = paymentEnabled && calculation.depositAmountCents > 0
+    const depositRequired = barbershop.depositRequired && calculation.depositAmountCents > 0
 
     return {
       depositRequired,
+      paymentAvailable: !depositRequired || barbershop.paymentAvailable,
       depositAmount: calculation.depositAmountCents / 100,
       processingFeeMode: calculation.processingFeeMode,
       processingFeeAmount: calculation.processingFeeAmountCents / 100,

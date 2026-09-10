@@ -54,6 +54,7 @@ export function parsePaymentAppointmentSnapshot(value: unknown): PaymentAppointm
   return {
     appointmentId,
     depositRequired: true,
+    paymentAvailable: true,
     depositAmount,
     processingFeeMode: mode,
     processingFeeAmount,
@@ -72,6 +73,7 @@ export function parseQuotedPayment(value: unknown): PaymentQuote | null {
 
   if (
     typeof record.depositRequired !== 'boolean'
+    || typeof record.paymentAvailable !== 'boolean'
     || (mode !== 'barbershop_absorbs' && mode !== 'customer_covers')
     || !/^[A-Z]{3}$/.test(currency)
     || typeof record.depositAmount !== 'number'
@@ -86,6 +88,7 @@ export function parseQuotedPayment(value: unknown): PaymentQuote | null {
 
   return {
     depositRequired: record.depositRequired,
+    paymentAvailable: record.paymentAvailable,
     depositAmount: record.depositAmount,
     processingFeeMode: mode,
     processingFeeAmount: record.processingFeeAmount,
@@ -97,6 +100,7 @@ export function parseQuotedPayment(value: unknown): PaymentQuote | null {
 export function paymentQuoteFromSnapshot(snapshot: PaymentAppointmentSnapshot): PaymentQuote {
   return {
     depositRequired: true,
+    paymentAvailable: true,
     depositAmount: snapshot.depositAmount,
     processingFeeMode: snapshot.processingFeeMode,
     processingFeeAmount: snapshot.processingFeeAmount,
@@ -110,6 +114,7 @@ export function quotedPaymentMatchesSnapshot(
   snapshot: PaymentAppointmentSnapshot
 ): boolean {
   return quote.depositRequired
+    && quote.paymentAvailable
     && quote.processingFeeMode === snapshot.processingFeeMode
     && quote.currency === snapshot.currency
     && amountToCents(quote.depositAmount) === amountToCents(snapshot.depositAmount)

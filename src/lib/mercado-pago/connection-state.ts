@@ -28,6 +28,25 @@ export function getMercadoPagoConnectionUiState(
   return 'not_connected'
 }
 
+export function isMercadoPagoConnectionUsable(
+  summary: MercadoPagoConnectionSummary,
+  nowMs = Date.now()
+): boolean {
+  if (!summary.configured || summary.status !== 'connected') return false
+  if (summary.source === 'manual') return true
+  if (summary.source !== 'oauth' || !summary.expiresAt) return false
+  const expiresAt = Date.parse(summary.expiresAt)
+  return Number.isFinite(expiresAt) && expiresAt - nowMs > 10 * 60 * 1000
+}
+
+export function shouldWarnDepositCapability(
+  depositRequired: boolean,
+  summary: MercadoPagoConnectionSummary,
+  nowMs = Date.now()
+): boolean {
+  return depositRequired && !isMercadoPagoConnectionUsable(summary, nowMs)
+}
+
 export function parseSettingsSection(value: unknown): SettingsSection {
   return value === 'reservations' || value === 'mercado-pago' || value === 'general'
     ? value

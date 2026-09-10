@@ -8,6 +8,9 @@ import {
 import type { PaymentQuoteRequest } from '@/lib/payments/payment-quote'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { ProcessingFeeMode } from '@/lib/types'
+import { getValidMercadoPagoAccessToken } from '@/lib/mercado-pago/credentials'
+
+const PAYMENT_UNAVAILABLE_MESSAGE = 'Esta barbería no puede recibir señas en este momento. Intentá nuevamente más tarde.'
 
 export async function POST(req: NextRequest) {
   let request: PaymentQuoteRequest
@@ -34,7 +37,6 @@ export async function POST(req: NextRequest) {
         currency,
         deposit_required,
         deposit_percentage,
-        mp_configured,
         processing_fee_mode,
         effective_processing_rate
       `)
@@ -59,6 +61,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Servicio no encontrado o inactivo' }, { status: 404 })
   }
 
+  if (barbershopResult.data.deposit_required === true) {
+    try {
+      await getValidMercadoPagoAccessToken(request.barbershopId)
+    } catch {
+      return NextResponse.json(
+        { error: PAYMENT_UNAVAILABLE_MESSAGE },
+        { status: 503, headers: { 'Cache-Control': 'no-store' } }
+      )
+    }
+  }
+
   try {
     const quote = buildPaymentQuote({
       request,
@@ -68,7 +81,7 @@ export async function POST(req: NextRequest) {
         currency: String(barbershopResult.data.currency ?? ''),
         depositRequired: barbershopResult.data.deposit_required === true,
         depositPercentage: Number(barbershopResult.data.deposit_percentage),
-        mpConfigured: barbershopResult.data.mp_configured === true,
+        paymentAvailable: true,
         processingFeeMode: barbershopResult.data.processing_fee_mode as ProcessingFeeMode,
         effectiveProcessingRate: String(barbershopResult.data.effective_processing_rate ?? ''),
       },

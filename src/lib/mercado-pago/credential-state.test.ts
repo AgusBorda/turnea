@@ -66,3 +66,13 @@ test('fails closed for disconnected and reauth-required credentials', () => {
     mp_access_token: null,
   }), NOW), 'MERCADO_PAGO_REAUTH_REQUIRED')
 })
+
+test('fails closed for missing and unusable credential data', () => {
+  expectCode(
+    () => resolveMercadoPagoCredential(null, NOW),
+    'MERCADO_PAGO_NOT_CONNECTED'
+  )
+  expectCode(() => resolveMercadoPagoCredential(row({
+    mp_access_token: '',
+  }), NOW), 'MERCADO_PAGO_CREDENTIAL_UNAVAILABLE')
+})

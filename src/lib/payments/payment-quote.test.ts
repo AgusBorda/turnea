@@ -25,7 +25,7 @@ function quote(overrides: {
       currency: 'ARS',
       depositRequired: overrides.depositRequired ?? true,
       depositPercentage: 10,
-      mpConfigured: overrides.mpConfigured ?? true,
+      paymentAvailable: overrides.mpConfigured ?? true,
       processingFeeMode: overrides.processingFeeMode ?? 'customer_covers',
       effectiveProcessingRate: overrides.effectiveProcessingRate ?? '0.04',
     },
@@ -41,6 +41,7 @@ function quote(overrides: {
 test('quotes a customer-covered processing cost', () => {
   assert.deepEqual(quote(), {
     depositRequired: true,
+    paymentAvailable: true,
     depositAmount: 1500,
     processingFeeMode: 'customer_covers',
     processingFeeAmount: 62.5,
@@ -68,11 +69,12 @@ test('returns zero amounts when the barbershop does not require a deposit', () =
   assert.equal(result.paymentTotalAmount, 0)
 })
 
-test('returns zero amounts when Mercado Pago is not configured', () => {
+test('preserves the deposit policy when Mercado Pago is not configured', () => {
   const result = quote({ mpConfigured: false })
-  assert.equal(result.depositRequired, false)
-  assert.equal(result.depositAmount, 0)
-  assert.equal(result.paymentTotalAmount, 0)
+  assert.equal(result.depositRequired, true)
+  assert.equal(result.paymentAvailable, false)
+  assert.equal(result.depositAmount, 1500)
+  assert.equal(result.paymentTotalAmount, 1562.5)
 })
 
 test('rejects invalid identifiers', () => {

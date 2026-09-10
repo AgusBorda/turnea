@@ -13,6 +13,7 @@ import {
 const snapshot: PaymentAppointmentSnapshot = {
   appointmentId: '11111111-1111-4111-8111-111111111111',
   depositRequired: true,
+  paymentAvailable: true,
   depositAmount: 1500,
   processingFeeMode: 'customer_covers',
   processingFeeAmount: 62.5,

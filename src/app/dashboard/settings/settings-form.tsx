@@ -14,6 +14,7 @@ import type { MercadoPagoSettlementOption, ProcessingFeeMode } from '@/lib/types
 import { createSettingsSnapshot, settingsSnapshotsEqual } from '@/lib/settings-dirty-state'
 import {
   getMercadoPagoConnectionUiState,
+  shouldWarnDepositCapability,
   type MercadoPagoConnectionSummary,
   type MercadoPagoOAuthResult,
   type SettingsSection,
@@ -168,6 +169,7 @@ export default function SettingsForm({
   })
   const isDirty = !settingsSnapshotsEqual(currentSnapshot, persistedSnapshot)
   const connectionUiState = getMercadoPagoConnectionUiState(connectionSummary)
+  const showDepositCapabilityWarning = shouldWarnDepositCapability(depositRequired, connectionSummary)
 
   useEffect(() => {
     if (!initialOAuthResult) return
@@ -710,6 +712,28 @@ export default function SettingsForm({
             />
             {!depositRequired && <p className="mt-1 text-xs text-[var(--muted)]">Activá la seña para configurar el porcentaje.</p>}
         </div>
+        {showDepositCapabilityWarning && (
+          <div role="status" className="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+              <div>
+                <p className="text-amber-950">
+                  Tenés activadas las señas, pero Mercado Pago no está conectado. Tus clientes no podrán completar reservas con seña hasta que lo conectes.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSection('mercado-pago')
+                    router.replace('/dashboard/settings?tab=mercado-pago', { scroll: false })
+                  }}
+                  className="mt-2 font-medium text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2"
+                >
+                  Conectar Mercado Pago
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         </div>
             </Card>
           )}

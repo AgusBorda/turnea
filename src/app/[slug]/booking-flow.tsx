@@ -24,12 +24,11 @@ interface Props {
   barbershop: BookingBarbershop
   barbers: PublicBarber[]
   services: PublicService[]
-  mpConfigured: boolean
 }
 
 type Step = 'service' | 'barber' | 'date' | 'time' | 'confirm'
 
-export default function BookingFlow({ barbershop, barbers, services, mpConfigured }: Props) {
+export default function BookingFlow({ barbershop, barbers, services }: Props) {
   const [step, setStep] = useState<Step>('service')
   const [selectedService, setSelectedService] = useState<PublicService | null>(null)
   const [selectedBarber, setSelectedBarber] = useState<PublicBarber | null>(null)
@@ -112,14 +111,22 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
       const result: PaymentQuote | { error?: string } = await response.json()
 
       if (!response.ok || !('depositRequired' in result)) {
-        throw new Error('No se pudo calcular el resumen de pago.')
+        throw new Error(
+          'error' in result && result.error
+            ? result.error
+            : 'No se pudo calcular el resumen de pago.'
+        )
       }
       if (requestId === quoteRequestId.current) {
         setPaymentQuote(result)
       }
-    } catch {
+    } catch (quoteFailure) {
       if (requestId === quoteRequestId.current) {
-        setQuoteError('No pudimos calcular el pago. Intentá nuevamente.')
+        setQuoteError(
+          quoteFailure instanceof Error
+            ? quoteFailure.message
+            : 'No pudimos calcular el pago. Intentá nuevamente.'
+        )
       }
     } finally {
       if (requestId === quoteRequestId.current) {
@@ -209,8 +216,7 @@ export default function BookingFlow({ barbershop, barbers, services, mpConfigure
     setStep('confirm')
   }
 
-  const requiresDeposit = paymentQuote?.depositRequired
-    ?? (barbershop.deposit_required && mpConfigured)
+  const requiresDeposit = barbershop.deposit_required
   const paymentQuoteUnavailable = requiresDeposit && (
     quoteLoading || Boolean(quoteError) || paymentQuote === null
   )

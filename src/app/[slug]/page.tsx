@@ -78,7 +78,6 @@ export default async function BarbershopPage({ params }: PageProps) {
           barbershop={barbershop}
           barbers={(barbers || []) as PublicBarber[]}
           services={services}
-          mpConfigured={barbershop.mp_configured}
         />
       </div>
     </main>
