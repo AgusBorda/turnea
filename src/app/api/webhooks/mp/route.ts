@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
-  getValidMercadoPagoAccessToken,
+  getValidMercadoPagoCredential,
   MercadoPagoCredentialError,
 } from '@/lib/mercado-pago/credentials'
+import { webhookSellerIdentityDecision } from '@/lib/mercado-pago/seller-identity'
 import {
   moneyAmountAsNumber,
   paymentAmountAndCurrencyMatch,
@@ -22,6 +23,7 @@ interface WebhookBody {
 
 interface MercadoPagoPayment {
   id?: unknown
+  collector_id?: unknown
   status?: unknown
   external_reference?: unknown
   transaction_amount?: unknown
@@ -136,9 +138,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Servicio no disponible' }, { status: 500 })
   }
 
-  let accessToken: string
+  let credential: Awaited<ReturnType<typeof getValidMercadoPagoCredential>>
   try {
-    accessToken = await getValidMercadoPagoAccessToken(barbershopId)
+    credential = await getValidMercadoPagoCredential(barbershopId)
   } catch (error) {
     if (
       error instanceof MercadoPagoCredentialError
@@ -153,7 +155,7 @@ export async function POST(req: NextRequest) {
 
   try {
     paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${credential.accessToken}` },
       cache: 'no-store',
     })
   } catch {
@@ -174,6 +176,21 @@ export async function POST(req: NextRequest) {
   }
 
   const verifiedPaymentId = asPaymentId(payment.id)
+  if (verifiedPaymentId !== paymentId) return okResponse()
+
+  const sellerIdentity = webhookSellerIdentityDecision(
+    credential.source, credential.userId, payment.collector_id
+  )
+  if (!sellerIdentity.proceed) {
+    console.warn('[mp-webhook] seller identity rejected', {
+      barbershopId,
+      appointmentId: typeof payment.external_reference === 'string' && UUID_PATTERN.test(payment.external_reference)
+        ? payment.external_reference : null,
+      paymentId,
+      reason: sellerIdentity.reason,
+    })
+    return okResponse()
+  }
   const externalReference = typeof payment.external_reference === 'string'
     ? payment.external_reference.trim()
     : ''
@@ -237,7 +254,7 @@ export async function POST(req: NextRequest) {
   try {
     merchantOrderResponse = await fetch(
       `https://api.mercadopago.com/merchant_orders/${encodeURIComponent(merchantOrderId)}`,
-      { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' }
+      { headers: { Authorization: `Bearer ${credential.accessToken}` }, cache: 'no-store' }
     )
   } catch {
     return NextResponse.json({ error: 'No se pudo validar la preference' }, { status: 502 })

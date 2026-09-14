@@ -9,9 +9,9 @@ import {
   getMercadoPagoRefunds,
   type MercadoPagoRefund,
 } from '@/lib/mercado-pago/refunds'
-import { getValidMercadoPagoAccessToken } from '@/lib/mercado-pago/credentials'
-import { executeMarkedRefund, verificationRecoveryAction } from '@/lib/mercado-pago/refund-claim-coordination'
-import { getRefundErrorMessage, isRefundErrorRetryable } from '@/lib/reconciliations'
+import { getValidMercadoPagoCredential } from '@/lib/mercado-pago/credentials'
+import { executeMarkedRefund, guardRefundSellerIdentity, verificationRecoveryAction } from '@/lib/mercado-pago/refund-claim-coordination'
+import { getRefundClaimReviewMessage, getRefundErrorMessage, isRefundErrorRetryable } from '@/lib/reconciliations'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -263,9 +263,9 @@ async function processRefundClaim(
   }
 
   const [credentialResult, appointmentResult] = await Promise.all([
-    getValidMercadoPagoAccessToken(claim.barbershop_id)
-      .then(accessToken => ({ accessToken, error: false }))
-      .catch(() => ({ accessToken: null, error: true })),
+    getValidMercadoPagoCredential(claim.barbershop_id)
+      .then(credential => ({ credential, error: false }))
+      .catch(() => ({ credential: null, error: true })),
     admin
       .from('appointments')
       .select('id, barbershop_id, deposit_amount, mp_preference_id')
@@ -274,10 +274,11 @@ async function processRefundClaim(
       .maybeSingle(),
   ])
 
-  const accessToken = credentialResult.accessToken
-  if (credentialResult.error || !accessToken) {
+  const credential = credentialResult.credential
+  if (credentialResult.error || !credential) {
     return failRefund('credential_error')
   }
+  const accessToken = credential.accessToken
 
   const appointment = appointmentResult.data
   if (
@@ -301,6 +302,29 @@ async function processRefundClaim(
   }
 
   const payment = paymentResult.data
+  if (asNumericId(payment.id) !== claim.mp_payment_id) {
+    return failRefund('financial_mismatch')
+  }
+  const sellerGuard = await guardRefundSellerIdentity({
+    source: credential.source,
+    userId: credential.userId,
+    collectorId: payment.collector_id,
+    canRelease: Boolean(activeClaimId && !postPossible),
+    release: async reason => {
+      const { data, error } = await admin.rpc('release_payment_reconciliation_refund_claim', {
+        p_reconciliation_id: claim.reconciliation_id,
+        p_claim_id: activeClaimId,
+        p_idempotency_key: claim.refund_idempotency_key,
+        p_reason: reason,
+      })
+      return !error && data === 'released'
+    },
+  })
+  if (sellerGuard.kind !== 'continue') {
+    return { success: false, message: sellerGuard.kind === 'released'
+      ? getRefundClaimReviewMessage(sellerGuard.reason) || 'La identidad del vendedor requiere revisión.'
+      : 'No se pudo confirmar la liberación del claim. No se envió un reembolso; revisá la conciliación antes de continuar.' }
+  }
   const paymentStatus = typeof payment.status === 'string' ? payment.status : ''
   const externalReference = typeof payment.external_reference === 'string'
     ? payment.external_reference.trim()

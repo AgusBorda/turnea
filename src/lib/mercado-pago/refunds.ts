@@ -5,6 +5,7 @@ const REQUEST_TIMEOUT_MS = 12_000
 
 export interface MercadoPagoPayment {
   id?: unknown
+  collector_id?: unknown
   status?: unknown
   external_reference?: unknown
   transaction_amount?: unknown

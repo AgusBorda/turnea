@@ -1,4 +1,35 @@
 // Keep the external POST behind a durable, acknowledged database transition.
+import {
+  validateMercadoPagoSellerIdentity,
+  type MercadoPagoSellerIdentityResult,
+} from './seller-identity.ts'
+
+export async function guardRefundSellerIdentity(input: {
+  source: 'manual' | 'oauth'
+  userId: string | null
+  collectorId: unknown
+  canRelease: boolean
+  release: (reason: 'seller_mismatch' | 'seller_missing') => Promise<boolean>
+}): Promise<
+  | { kind: 'continue' }
+  | { kind: 'released'; reason: 'seller_mismatch' | 'seller_missing' }
+  | { kind: 'blocked'; reason: 'seller_mismatch' | 'seller_missing' }
+> {
+  const identity: MercadoPagoSellerIdentityResult = validateMercadoPagoSellerIdentity(
+    input.source, input.userId, input.collectorId
+  )
+  if (identity.kind === 'match' || identity.kind === 'legacy_manual_unverified') {
+    return { kind: 'continue' }
+  }
+  const reason = identity.kind === 'mismatch' ? 'seller_mismatch' : 'seller_missing'
+  if (!input.canRelease) return { kind: 'blocked', reason }
+  try {
+    return await input.release(reason) ? { kind: 'released', reason } : { kind: 'blocked', reason }
+  } catch {
+    return { kind: 'blocked', reason }
+  }
+}
+
 export async function executeMarkedRefund<T>(
   markPostPossible: () => Promise<boolean>,
   postRefund: () => Promise<T>

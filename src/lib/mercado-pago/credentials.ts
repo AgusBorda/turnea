@@ -63,11 +63,11 @@ export async function getMercadoPagoCredential(
   return resolveMercadoPagoCredential(data as unknown as MercadoPagoCredentialRow | null)
 }
 
-export async function getValidMercadoPagoAccessToken(barbershopId: string) {
+export async function getValidMercadoPagoCredential(barbershopId: string): Promise<MercadoPagoCredential> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const row = await loadCredentialRow(barbershopId)
     try {
-      return resolveMercadoPagoCredential(row).accessToken
+      return resolveMercadoPagoCredential(row)
     } catch (error) {
       if (!(error instanceof MercadoPagoCredentialError)
         || error.code !== 'MERCADO_PAGO_TOKEN_REFRESH_REQUIRED') throw error
@@ -124,6 +124,10 @@ export async function getValidMercadoPagoAccessToken(barbershopId: string) {
     throw new MercadoPagoCredentialError('MERCADO_PAGO_REFRESH_TRANSIENT_FAILURE')
   }
   throw new MercadoPagoCredentialError('MERCADO_PAGO_REFRESH_TRANSIENT_FAILURE')
+}
+
+export async function getValidMercadoPagoAccessToken(barbershopId: string) {
+  return (await getValidMercadoPagoCredential(barbershopId)).accessToken
 }
 
 export async function storeManualMercadoPagoCredential(
