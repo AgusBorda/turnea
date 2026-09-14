@@ -8,6 +8,7 @@ import {
   getAppointmentStatusLabel,
   getDepositStatusLabel,
   getRefundErrorMessage,
+  getRefundClaimReviewMessage,
   getReconciliationReasonLabel,
   getReconciliationStatusClass,
   getReconciliationStatusLabel,
@@ -195,6 +196,11 @@ export default async function ReconciliationDetailPage({
 
           {reconciliation.status === 'pending_review' ? (
             <section className="rounded-xl border border-[var(--border)] bg-white p-5">
+              {getRefundClaimReviewMessage(reconciliation.last_error_code) && (
+                <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  {getRefundClaimReviewMessage(reconciliation.last_error_code)}
+                </p>
+              )}
               <h2 className="mb-2 font-semibold">Qué podés hacer</h2>
               <p className="mb-4 text-sm text-[var(--muted)]">
                 Podés cerrar la revisión si acordaste conservar el pago, por ejemplo después de reprogramar al cliente.

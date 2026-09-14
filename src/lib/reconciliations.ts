@@ -44,6 +44,17 @@ const RETRYABLE_REFUND_ERROR_CODES = new Set([
   'temporary_error',
 ])
 
+const REFUND_CLAIM_REVIEW_MESSAGES: Record<string, string> = {
+  payment_verification_transient: 'No se pudo consultar el estado oficial del pago. No se envió un nuevo reembolso; revisá antes de reintentar.',
+  verification_required: 'La verificación no fue concluyente. No se envió un nuevo reembolso; revisá el caso.',
+  seller_mismatch: 'La cuenta que recibió el pago no coincide con la conexión actual. Revisá la configuración antes de continuar.',
+  seller_missing: 'Mercado Pago no informó la identidad del vendedor. Revisá el caso antes de continuar.',
+}
+
+export function getRefundClaimReviewMessage(code: string | null): string | null {
+  return code ? REFUND_CLAIM_REVIEW_MESSAGES[code] ?? null : null
+}
+
 export function getReconciliationReasonLabel(reason: string): string {
   return RECONCILIATION_REASON_LABELS[reason] || 'Pago que requiere revisión'
 }

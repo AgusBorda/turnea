@@ -10,6 +10,7 @@ import {
   type MercadoPagoRefund,
 } from '@/lib/mercado-pago/refunds'
 import { getValidMercadoPagoAccessToken } from '@/lib/mercado-pago/credentials'
+import { executeMarkedRefund, verificationRecoveryAction } from '@/lib/mercado-pago/refund-claim-coordination'
 import { getRefundErrorMessage, isRefundErrorRetryable } from '@/lib/reconciliations'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -38,6 +39,8 @@ interface RefundClaim {
   refund_idempotency_key: string
   status: string
   last_error_code: string | null
+  refund_phase: 'claimed_no_post' | 'post_possible' | null
+  refund_claim_id: string | null
 }
 
 type RefundErrorCode =
@@ -110,7 +113,7 @@ async function getRefundClaim(
     }
   }
 
-  const { data, error } = await supabase.rpc('claim_payment_reconciliation_refund', {
+  const { data, error } = await supabase.rpc('claim_payment_reconciliation_refund_v2', {
     p_reconciliation_id: reconciliationId,
   })
 
@@ -129,7 +132,9 @@ async function getRefundClaim(
   }
 
   const claim = Array.isArray(data) ? data[0] as RefundClaim | undefined : undefined
-  if (!claim || !UUID_PATTERN.test(claim.refund_idempotency_key || '')) {
+  if (!claim || !UUID_PATTERN.test(claim.refund_idempotency_key || '')
+    || (claim.result === 'claimed' && (claim.refund_phase !== 'claimed_no_post'
+      || !UUID_PATTERN.test(claim.refund_claim_id || '')))) {
     return {
       supabase,
       claim: null,
@@ -146,6 +151,9 @@ async function processRefundClaim(
   allowNewRefund: boolean
 ): Promise<RefundReconciliationState> {
   let processingEstablished = claim.status !== 'refund_failed'
+  let activeClaimId = claim.refund_phase === 'claimed_no_post'
+    && UUID_PATTERN.test(claim.refund_claim_id || '') ? claim.refund_claim_id : null
+  let postPossible = claim.refund_phase === 'post_possible'
   let admin: ReturnType<typeof createAdminClient>
   try {
     admin = createAdminClient()
@@ -153,8 +161,30 @@ async function processRefundClaim(
     return { success: false, message: 'El servicio de pagos no está disponible.' }
   }
 
-  async function markVerificationRequired(): Promise<RefundReconciliationState> {
-    if (!processingEstablished) {
+  async function markVerificationRequired(
+    releaseReason: 'payment_verification_transient' | 'verification_required' = 'verification_required'
+  ): Promise<RefundReconciliationState> {
+    const recovery = verificationRecoveryAction({
+      activeClaimId,
+      claimStartedFromPendingReview: claim.status === 'refund_processing',
+      postPossible,
+      processingEstablished,
+    })
+    if (recovery === 'release' && activeClaimId) {
+      const { data, error } = await admin.rpc('release_payment_reconciliation_refund_claim', {
+        p_reconciliation_id: claim.reconciliation_id,
+        p_claim_id: activeClaimId,
+        p_idempotency_key: claim.refund_idempotency_key,
+        p_reason: releaseReason,
+      })
+      return {
+        success: false,
+        message: !error && data === 'released'
+          ? 'No se pudo verificar el pago. No se envió un reembolso; la conciliación queda pendiente de revisión.'
+          : 'No se pudo confirmar la liberación del claim. Verificá el estado de la conciliación antes de continuar.',
+      }
+    }
+    if (recovery === 'no_change') {
       return {
         success: false,
         message: 'No se pudo verificar el estado actual. El intento anterior permanece registrado sin emitir un nuevo reembolso.',
@@ -190,11 +220,16 @@ async function processRefundClaim(
 
   async function ensureProcessing(): Promise<boolean> {
     if (claim.status !== 'refund_failed') return true
-    const { data, error } = await supabase.rpc('retry_payment_reconciliation_refund', {
+    const { data, error } = await supabase.rpc('retry_payment_reconciliation_refund_v2', {
       p_reconciliation_id: claim.reconciliation_id,
     })
-    const ready = !error && (data === 'retried' || data === 'already_processing')
-    if (ready) processingEstablished = true
+    const retry = Array.isArray(data) ? data[0] as { result?: string; refund_claim_id?: string } | undefined : undefined
+    const ready = !error && retry?.result === 'retried'
+      && UUID_PATTERN.test(retry.refund_claim_id || '')
+    if (ready) {
+      processingEstablished = true
+      activeClaimId = retry!.refund_claim_id!
+    }
     return ready
   }
 
@@ -256,11 +291,13 @@ async function processRefundClaim(
 
   const paymentResult = await getMercadoPagoPayment(accessToken, claim.mp_payment_id)
   if (!paymentResult.responseReceived || paymentResult.status === null || paymentResult.status >= 500) {
-    return markVerificationRequired()
+    return markVerificationRequired('payment_verification_transient')
   }
   if (!paymentResult.ok || !paymentResult.data) {
     const errorCode = classifyMercadoPagoRefundError(paymentResult.status, paymentResult.errorCode)
-    return errorCode ? failRefund(errorCode) : markVerificationRequired()
+    return errorCode ? failRefund(errorCode) : markVerificationRequired(
+      paymentResult.status === 429 ? 'payment_verification_transient' : 'verification_required'
+    )
   }
 
   const payment = paymentResult.data
@@ -292,14 +329,16 @@ async function processRefundClaim(
 
   const merchantOrderResult = await getMercadoPagoMerchantOrder(accessToken, merchantOrderId)
   if (!merchantOrderResult.responseReceived || merchantOrderResult.status === null || merchantOrderResult.status >= 500) {
-    return markVerificationRequired()
+    return markVerificationRequired('payment_verification_transient')
   }
   if (!merchantOrderResult.ok || !merchantOrderResult.data) {
     const errorCode = classifyMercadoPagoRefundError(
       merchantOrderResult.status,
       merchantOrderResult.errorCode
     )
-    return errorCode ? failRefund(errorCode) : markVerificationRequired()
+    return errorCode ? failRefund(errorCode) : markVerificationRequired(
+      merchantOrderResult.status === 429 ? 'payment_verification_transient' : 'verification_required'
+    )
   }
   if (merchantOrderResult.data.preference_id !== claim.mp_preference_id) {
     return failRefund('financial_mismatch')
@@ -307,11 +346,13 @@ async function processRefundClaim(
 
   const refundsResult = await getMercadoPagoRefunds(accessToken, claim.mp_payment_id)
   if (!refundsResult.responseReceived || refundsResult.status === null || refundsResult.status >= 500) {
-    return markVerificationRequired()
+    return markVerificationRequired('payment_verification_transient')
   }
   if (!refundsResult.ok || !refundsResult.data) {
     const errorCode = classifyMercadoPagoRefundError(refundsResult.status, refundsResult.errorCode)
-    return errorCode ? failRefund(errorCode) : markVerificationRequired()
+    return errorCode ? failRefund(errorCode) : markVerificationRequired(
+      refundsResult.status === 429 ? 'payment_verification_transient' : 'verification_required'
+    )
   }
 
   const approvedRefunds = refundsResult.data.filter(refund => refund.status === 'approved')
@@ -335,11 +376,32 @@ async function processRefundClaim(
     return { success: false, message: 'No se pudo preparar el reintento seguro.' }
   }
 
-  const refundResult = await createMercadoPagoFullRefund(
-    accessToken,
-    claim.mp_payment_id,
-    claim.refund_idempotency_key
-  )
+  // Persist the uncertainty boundary before invoking the external POST.
+  if (!activeClaimId) {
+    return { success: false, message: 'No se pudo validar el claim del reembolso. Esta acción no envió una solicitud.' }
+  }
+  const outcome = await executeMarkedRefund(
+    async () => {
+      const { data, error } = await admin.rpc('mark_payment_reconciliation_refund_post_possible', {
+        p_reconciliation_id: claim.reconciliation_id,
+        p_claim_id: activeClaimId,
+        p_idempotency_key: claim.refund_idempotency_key,
+      })
+      if (error || data !== 'marked') return false
+      postPossible = true
+      return true
+    },
+    () => createMercadoPagoFullRefund(
+      accessToken,
+      claim.mp_payment_id,
+      claim.refund_idempotency_key
+    )
+  ).catch(() => null)
+  if (!outcome) return markVerificationRequired()
+  if (outcome.kind === 'mark_failed') {
+    return { success: false, message: 'No se pudo preparar el reembolso. Esta acción no envió una solicitud; verificá el estado antes de continuar.' }
+  }
+  const refundResult = outcome.result
 
   if (!refundResult.responseReceived || refundResult.status === null || refundResult.status >= 500) {
     return markVerificationRequired()
