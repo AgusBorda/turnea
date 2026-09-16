@@ -7,6 +7,7 @@ import { getValidMercadoPagoCredential } from '@/lib/mercado-pago/credentials'
 import { buildCheckoutIntentRpcArgs, type CheckoutIntentRpcRow,
   type CheckoutIntentPrivateRow } from '@/lib/payments/checkout-intent-server'
 import { parseCheckoutV2Request } from '@/lib/payments/checkout-v2-request'
+import { buildCheckoutNotificationUrl, resolveCheckoutAppUrl } from '@/lib/payments/checkout-v2-urls'
 import { parsePaymentAppointmentSnapshot, paymentQuoteFromSnapshot,
   quotedPaymentMatchesSnapshot, mercadoPagoUnitPrice } from '@/lib/payments/checkout-snapshot'
 import { runCheckoutV2, type CheckoutV2Dependencies, type CheckoutV2Intent } from '@/lib/payments/checkout-v2-flow'
@@ -17,29 +18,6 @@ import type { PublicBarbershopCheckoutConfig, PublicServiceCheckoutConfig } from
 
 const TTL_MS = 15 * 60 * 1000
 const INVALID_REQUEST = { status: 'error', code: 'invalid_request' }
-
-function publicUrl(req: NextRequest): string | null {
-  const configured = process.env.NEXT_PUBLIC_APP_URL
-  if (!configured && req.nextUrl.hostname !== 'localhost') return null
-  try {
-    const url = new URL(configured || req.nextUrl.origin)
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.hostname === 'localhost')) return null
-    return url.origin
-  } catch { return null }
-}
-
-function notificationUrl(appUrl: string, shopId: string): string | null | undefined {
-  if (appUrl.includes('localhost')) return null
-  const url = new URL('/api/webhooks/mp', appUrl)
-  url.searchParams.set('barbershop_id', shopId)
-  url.searchParams.set('source_news', 'webhooks')
-  if (process.env.VERCEL_ENV === 'preview') {
-    const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
-    if (!bypass) return undefined
-    url.searchParams.set('x-vercel-protection-bypass', bypass)
-  }
-  return url.toString()
-}
 
 export async function POST(req: NextRequest) {
   let body: unknown
@@ -129,9 +107,15 @@ export async function POST(req: NextRequest) {
     if (isLocalSlotInPast(booking.date, booking.startTime, shop.timezone)) {
       return NextResponse.json({ status: 'error', code: 'APPOINTMENT_IN_PAST' }, { status: 400 })
     }
-    appUrl = publicUrl(req)
-    webhookUrl = appUrl ? notificationUrl(appUrl, booking.barbershopId) : undefined
-    if (!appUrl || webhookUrl === undefined) return NextResponse.json({ status: 'error' }, { status: 503 })
+    appUrl = resolveCheckoutAppUrl(
+      process.env.NEXT_PUBLIC_APP_URL, req.nextUrl.origin, req.nextUrl.hostname
+    )
+    const notification = appUrl ? buildCheckoutNotificationUrl(
+      appUrl, booking.barbershopId, process.env.VERCEL_ENV,
+      process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+    ) : null
+    if (!appUrl || !notification) return NextResponse.json({ status: 'error' }, { status: 503 })
+    webhookUrl = notification.url
   }
 
   const readSnapshot: CheckoutV2Dependencies['readSnapshot'] = async (appointmentId, forPost) => {
