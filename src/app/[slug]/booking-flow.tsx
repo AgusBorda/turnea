@@ -14,6 +14,7 @@ import { useMinuteNow } from '@/hooks/use-minute-now'
 import { createClient } from '@/lib/supabase/client'
 import { Check, ChevronLeft, Clock, User, Scissors, Calendar, CreditCard, Wallet } from 'lucide-react'
 import type { PaymentQuote } from '@/lib/payments/payment-quote'
+import { submitCheckoutV2 } from '@/lib/payments/checkout-v2-client'
 
 type BookingBarbershop = Pick<
   Barbershop,
@@ -44,6 +45,8 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteError, setQuoteError] = useState('')
   const quoteRequestId = useRef(0)
+  const checkoutInFlight = useRef(false)
+  const [paymentProgress, setPaymentProgress] = useState('')
 
   const synchronizeSelection = useCallback((currentNow: Date) => {
     if (!selectedDate) return
@@ -88,6 +91,7 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
     : timeSlots
 
   function goBack() {
+    if (loading) return
     if (currentIndex > 0) {
       setStep(steps[currentIndex - 1])
     }
@@ -218,7 +222,7 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
 
   const requiresDeposit = barbershop.deposit_required
   const paymentQuoteUnavailable = requiresDeposit && (
-    quoteLoading || Boolean(quoteError) || paymentQuote === null
+    quoteLoading || Boolean(quoteError) || paymentQuote === null || !paymentQuote.paymentAvailable
   )
   const formatPaymentAmount = (amount: number, currency: string) => new Intl.NumberFormat('es-AR', {
     style: 'currency',
@@ -228,13 +232,16 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
   }).format(amount)
 
   async function confirmBooking() {
+    if (checkoutInFlight.current || loading) return
     if (!clientName.trim() || !clientPhone.trim()) {
       setError('Completá tu nombre y WhatsApp.')
       return
     }
 
+    if (requiresDeposit) checkoutInFlight.current = true
     setLoading(true)
     setError('')
+    setPaymentProgress('')
 
     try {
       const dateStr = selectedDate!
@@ -243,47 +250,46 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
         if (!paymentQuote) {
           throw new Error('No se pudo verificar el importe del pago. Intentá nuevamente.')
         }
-        // Flow with Mercado Pago deposit
-        const res = await fetch('/api/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            barbershop_id: barbershop.id,
-            barber_id: selectedBarber!.id,
-            service_id: selectedService!.id,
-            date: dateStr,
-            start_time: selectedTime,
-            client_name: clientName.trim(),
-            client_phone: clientPhone.trim(),
-            // Consent snapshot only. Checkout/PostgreSQL recalculate every amount.
-            quoted_payment: paymentQuote,
-          }),
-        })
-
-        const data: {
-          init_point?: string
-          error?: string
-          code?: string
-          payment?: PaymentQuote
-        } = await res.json()
-        if (
-          res.status === 409
-          && data.code === 'PAYMENT_QUOTE_CHANGED'
-          && data.payment
-        ) {
-          setPaymentQuote(data.payment)
-          throw new Error('El importe cambió. Revisá el nuevo resumen y confirmá nuevamente.')
+        const result = await submitCheckoutV2(sessionStorage, {
+          barbershopId: barbershop.id,
+          barberId: selectedBarber!.id,
+          serviceId: selectedService!.id,
+          date: dateStr,
+          startTime: selectedTime!,
+          clientName: clientName.trim(),
+          clientPhone: clientPhone.trim(),
+        }, paymentQuote, {
+          onRecovering: () => setPaymentProgress('Estamos preparando el pago. Esto puede tardar unos segundos.'),
+        }).catch(() => { throw new Error('No pudimos guardar el intento de pago en este navegador. Intentá nuevamente.') })
+        if (result.kind === 'ready') {
+          window.location.assign(result.initPoint)
+          return
         }
-        if (!res.ok) {
-          throw new Error(data.error || 'Error al procesar seña')
+        if (result.kind === 'quote_changed') {
+          setPaymentQuote(result.payment)
+          throw new Error('El importe de la seña cambió. Revisá el nuevo total antes de continuar.')
         }
-        if (!data.init_point) {
-          throw new Error('Mercado Pago devolvió una respuesta inválida')
+        if (result.kind === 'slot_unavailable') {
+          setSelectedTime(null)
+          setStep('time')
+          void selectDate(dateStr)
+          throw new Error('Este horario ya no está disponible. Elegí otro.')
         }
-
-        // Redirect to Mercado Pago
-        window.location.href = data.init_point
-        return
+        if (result.kind === 'expired') {
+          setSelectedTime(null)
+          setStep('time')
+          throw new Error('Este intento de reserva venció. Elegí nuevamente un horario.')
+        }
+        if (result.kind === 'seller_changed') {
+          throw new Error('Esta barbería no puede recibir señas en este momento. Intentá nuevamente más tarde.')
+        }
+        if (result.kind === 'intent_conflict') {
+          throw new Error('La reserva cambió. Revisá los datos e intentá nuevamente.')
+        }
+        if (result.kind === 'recovering') {
+          throw new Error('Estamos verificando tu pago. Podés reintentar en unos segundos.')
+        }
+        throw new Error('No pudimos iniciar el pago en este momento. Intentá nuevamente.')
       }
 
       // Flow without deposit — direct booking
@@ -313,6 +319,8 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
       console.error('Booking error:', err)
       setError(err instanceof Error ? err.message : 'Error al reservar. Intentá de nuevo.')
     } finally {
+      checkoutInFlight.current = false
+      setPaymentProgress('')
       setLoading(false)
     }
   }
@@ -605,6 +613,7 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
               placeholder="Tu nombre *"
               value={clientName}
               onChange={e => setClientName(e.target.value)}
+              disabled={loading}
               className="w-full px-4 py-3 rounded-xl border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] transition-colors"
             />
             <input
@@ -612,6 +621,7 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
               placeholder="Tu WhatsApp (ej: 1155667788) *"
               value={clientPhone}
               onChange={e => setClientPhone(e.target.value)}
+              disabled={loading}
               className="w-full px-4 py-3 rounded-xl border border-[var(--border)] focus:outline-none focus:border-[var(--primary)] transition-colors"
             />
           </div>
@@ -635,6 +645,7 @@ export default function BookingFlow({ barbershop, barbers, services }: Props) {
                     ? `Pagar ${formatPaymentAmount(paymentQuote.paymentTotalAmount, paymentQuote.currency)} con Mercado Pago`
                     : 'Calculando pago...'}
               </button>
+              {paymentProgress && <p role="status" className="text-center text-sm text-[var(--muted)]">{paymentProgress}</p>}
               <p className="text-xs text-center text-[var(--muted)]">
                 La dirección del local se muestra tras confirmar el pago.
               </p>
