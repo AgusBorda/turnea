@@ -22,6 +22,18 @@ export interface CheckoutIntentRpcRow {
   expires_at: string
 }
 
+export interface CheckoutIntentPrivateRow {
+  id: string
+  appointment_id: string
+  barbershop_id: string
+  expected_mp_user_id: string | null
+  status: CheckoutIntentStatus
+  preference_phase: CheckoutPreferencePhase
+  preference_id: string | null
+  init_point: string | null
+  expires_at: string
+}
+
 export async function buildCheckoutIntentRpcArgs(
   token: string,
   input: CheckoutBookingInput,
@@ -32,7 +44,7 @@ export async function buildCheckoutIntentRpcArgs(
   const fingerprintHash = hashCheckoutBookingFingerprint(booking)
   const credential = await getValidMercadoPagoCredential(booking.barbershopId)
 
-  return {
+  const args = {
     p_token_hash: `\\x${tokenHash.toString('hex')}`,
     p_fingerprint_hash: `\\x${fingerprintHash.toString('hex')}`,
     p_fingerprint_version: CHECKOUT_FINGERPRINT_VERSION,
@@ -46,4 +58,5 @@ export async function buildCheckoutIntentRpcArgs(
     p_expires_at: expiresAt,
     p_expected_mp_user_id: credential.userId,
   }
+  return { args, credential, booking }
 }
